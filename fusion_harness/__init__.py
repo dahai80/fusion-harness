@@ -14,7 +14,7 @@ from fusion_harness.permissions import (
     PermissionRule,
 )
 
-KERNEL_VERSION = "0.1.0"
+KERNEL_VERSION = "0.2.0"
 
 __all__ = [
     "KERNEL_VERSION",

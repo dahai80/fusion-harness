@@ -8,7 +8,7 @@ Canonical agent harness kernel for the Fusion ecosystem: budget funnels, lifecyc
 
 **Hard constraint: pure stdlib, zero dependencies.** `dependencies = []` in pyproject.toml — do not add any. All imports must come from the Python standard library.
 
-**Cross-repo parity:** fusion-agent-studio keeps local fallback copies of these modules. Changes here are the source of truth, but the fallback copies must stay in sync or the two implementations drift. When changing a module, mirror the change in fusion-agent-studio's fallback copy.
+**Cross-repo contract:** fusion-agent-studio and fusion-cowork import this package directly (hard dependency — no fallback copies since 0.2.0, issue #2). fusion-code (TypeScript) conforms to `docs/contract.md` via its own parity tests. Behavior changes here must update `docs/contract.md` and the consumer repos' CI is the downstream detector.
 
 ## Commands
 
@@ -31,7 +31,7 @@ Four modules, wired together by the consumer at construction time (the kernel it
 
 - `funnels.py` — the runtime spine.
   - `LifecycleBus`: in-memory ring buffer of `LifecycleEvent`s (per-session), optional JSONL persistence, subscriber callbacks. Every other module emits through it.
-  - `ToolFunnel`: async gate around every tool call. `admit()` fires `PRE_TOOL_USE` hooks → permission engine `evaluate()` → budget check; `run_tool()` wraps the executor and fires `POST_TOOL_USE` / `TOOL_DENY` on the way out. A denied call never reaches the executor.
+  - `ToolFunnel`: async gate around every tool call. `admit()` fires `PRE_TOOL_USE` hooks → permission engine `evaluate()` → budget check; `run_tool()` wraps the executor and fires `POST_TOOL_USE` / `TOOL_DENY` on the way out. A denied call never reaches the executor. **Fail-closed by default** (0.2.0): no wired permission engine means deny; opt-out only via `FUSION_FUNNEL_PERMISSIONS=off` (loud warning per call).
   - `LLMFunnel`: token-budget gate for LLM calls, `pre_llm`/`post_llm` accounting, emits lifecycle events on budget thresholds.
 - `permissions.py` — deny-first `PermissionEngine`. Rules live in three layers (`node`, `graph`, `global`), scanned node → graph → global, first match wins. Four modes: `default`/`plan`/`approved`/`bypass`. Un-armed engine (no mode, no rules) passes through; URL arguments pointing at loopback hosts only (`localhost`/`127.0.0.1`/`::1`) are exempted from the network-danger heuristic. Persists to `~/.fusion-agent-studio/permissions.json`.
 - `hooks.py` — `HookEngine`: registry of callback hooks (`@hook` decorator collects into a module-level registry; `flush_decorator_registry()` moves them into the engine) and command hooks. `PRE_TOOL_USE`, `POST_TOOL_USE`, `TOOL_DENY` are **fail-closed**: a hook error on these events denies the tool call. Command hooks are disabled unless `FUSION_HOOKS_ALLOW_COMMAND=1`. Config at `~/.fusion-agent-studio/hooks.json`.
@@ -43,11 +43,12 @@ Dependencies flow one way: funnels → permissions + hooks; compactor → hooks 
 
 | Variable | Effect |
 |---|---|
+| `FUSION_FUNNEL_PERMISSIONS=off` | **Opt out of permission enforcement** (headless/CI) — every skipped call logs a DISABLED warning. Default (unset) is fail-closed. |
+| `FUSION_FUNNEL_REQUIRE_PERMISSIONS=0` | Legacy opt-out name, same effect as above |
 | `FUSION_PERMISSION_MODE` | Arms the engine with a mode (empty = un-armed passthrough) |
 | `FUSION_PERMISSION_PASSTHROUGH=0` | Turns un-armed passthrough into `ask` instead of `allow` |
 | `FUSION_PERMISSION_A3=0` | Disables the loopback-URL exemption heuristic |
-| `FUSION_FUNNEL_REQUIRE_PERMISSIONS=1` | ToolFunnel fails closed when no permission engine is wired in (default: warn + proceed) |
-| `FUSION_HOOKS_ALLOW_COMMAND=1` | Enables command-type hooks (default: no-op with logged reason) |
+| `FUSION_HOOKS_ALLOW_COMMAND=1` | Enables command-type hooks (default: blocked with logged reason) |
 | `FUSION_HOOK_MAX_MS` | Hook execution timeout budget, default 50ms |
 | `FUSION_COMPACT_MLX=0` | Disables LLM summarization in the compactor (deterministic only) |
 
