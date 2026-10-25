@@ -6,12 +6,11 @@ from fusion_harness import (
     LifecycleBus,
     LLMFunnel,
     PermissionEngine,
-    PermissionMode,
     PermissionRule,
     ToolFunnel,
 )
 from fusion_harness.funnels import EventDomain
-from fusion_harness.hooks import HookConfig, HookEngine, HookResult
+from fusion_harness.hooks import HookConfig, HookEngine
 
 
 def test_import_surface():

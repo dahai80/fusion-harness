@@ -7,19 +7,24 @@ Consumers: fusion-agent-studio (shim import), fusion-cowork, fusion-code.
 from fusion_harness.compactor import CompactionConfig, Compactor
 from fusion_harness.funnels import LifecycleBus, LLMFunnel, ToolFunnel
 from fusion_harness.hooks import HookConfig, HookEngine, HookResult
-from fusion_harness.permissions import PermissionDecision, PermissionEngine, PermissionMode, PermissionRule
+from fusion_harness.permissions import (
+    PermissionDecision,
+    PermissionEngine,
+    PermissionMode,
+    PermissionRule,
+)
 
 KERNEL_VERSION = "0.1.0"
 
 __all__ = [
+    "KERNEL_VERSION",
     "CompactionConfig",
     "Compactor",
-    "KERNEL_VERSION",
-    "LifecycleBus",
-    "LLMFunnel",
     "HookConfig",
     "HookEngine",
     "HookResult",
+    "LLMFunnel",
+    "LifecycleBus",
     "PermissionDecision",
     "PermissionEngine",
     "PermissionMode",
