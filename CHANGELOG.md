@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.1 (2026-10-26)
+
+### PyPI release pipeline (#3)
+
+- Published to public PyPI as `fusion-harness`. Tag pushes (`v*`) now run
+  `.github/workflows/release.yml`: test → build (`python -m build` +
+  `twine check`) → publish via PyPI trusted publishing (OIDC, no token).
+- Consumers no longer need `pip install git+...` preinstall steps —
+  fusion-agent-studio and fusion-cowork CI now install from PyPI.
+- Added `.github/workflows/ci.yml`: ruff + pytest on Python 3.11/3.12/3.13
+  for every push to master and every PR.
+
 ## 0.2.0 (2026-10-25)
 
 ### Breaking: permission enforcement fails closed by default (#1)

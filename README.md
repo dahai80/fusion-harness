@@ -36,9 +36,20 @@ the full environment variable table.
 
 ## Install
 
+From PyPI:
+
+```bash
+pip install fusion-harness
+```
+
+From source (development):
+
 ```bash
 pip install -e ".[test]"
 ```
+
+Releases are published by CI on tag push (`.github/workflows/release.yml`) via
+PyPI trusted publishing.
 
 ## Usage
 
