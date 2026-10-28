@@ -15,6 +15,12 @@ from fusion_harness.permissions import (
     PermissionRule,
     score_tool_risk,
 )
+from fusion_harness.session_log import (
+    LogSchemaError,
+    SessionEvent,
+    SessionEventLog,
+    SessionState,
+)
 
 KERNEL_VERSION = "0.2.1"
 
@@ -28,10 +34,14 @@ __all__ = [
     "HookResult",
     "LLMFunnel",
     "LifecycleBus",
+    "LogSchemaError",
     "PermissionDecision",
     "PermissionEngine",
     "PermissionMode",
     "PermissionRule",
+    "SessionEvent",
+    "SessionEventLog",
+    "SessionState",
     "ToolFunnel",
     "score_tool_risk",
 ]
