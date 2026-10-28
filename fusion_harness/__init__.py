@@ -6,6 +6,13 @@ Consumers: fusion-agent-studio (shim import), fusion-cowork, fusion-code.
 
 from fusion_harness.compactor import CompactionConfig, Compactor
 from fusion_harness.funnels import LifecycleBus, LLMFunnel, ToolFunnel
+from fusion_harness.pipeline import (
+    MonotonicGuard,
+    PipelineBlocked,
+    PipelineOutcome,
+    ToolPipeline,
+    ToolResult,
+)
 from fusion_harness.hooks import HookConfig, HookEngine, HookResult
 from fusion_harness.permissions import (
     ConfirmationPolicy,
@@ -35,13 +42,18 @@ __all__ = [
     "LLMFunnel",
     "LifecycleBus",
     "LogSchemaError",
+    "MonotonicGuard",
     "PermissionDecision",
     "PermissionEngine",
     "PermissionMode",
     "PermissionRule",
+    "PipelineBlocked",
+    "PipelineOutcome",
     "SessionEvent",
     "SessionEventLog",
     "SessionState",
     "ToolFunnel",
+    "ToolPipeline",
+    "ToolResult",
     "score_tool_risk",
 ]
