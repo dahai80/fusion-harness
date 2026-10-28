@@ -12,6 +12,11 @@ hooks, permission engine, and context compaction. Pure stdlib, zero dependencies
   sharing is not the goal; contract conformance is.
 
 The behavior contract for all runtimes lives in [docs/contract.md](docs/contract.md).
+Architecture decisions are recorded as ADRs; see
+[ADR 0001](docs/adr-0001-composition-unit.md): the composition unit stays
+service-level, in-process everything-is-a-plugin is rejected, and the kernel
+commits to three adopted disciplines (event log, segmented pipeline, fail-closed
+approval).
 
 ## Modules
 
