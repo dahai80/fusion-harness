@@ -485,6 +485,8 @@ class LLMFunnel:
                 level = "none"
             if level != "none":
                 self._emit("agent", "compact_before", {"level": level, "messages": len(messages)}, ctx)
+                success = True
+                error = ""
                 try:
                     compact_async = getattr(self.compactor, "compact_async", None)
                     if callable(compact_async):
@@ -492,8 +494,15 @@ class LLMFunnel:
                     else:
                         messages = self.compactor.compact(messages, level)
                 except Exception as e:
+                    # N8: a failed compaction must never look like a successful
+                    # one downstream — carry success=false + error on the event.
+                    success = False
+                    error = str(e)
                     logger.warning("compaction failed, continuing with original: %s", e)
-                self._emit("agent", "compact_after", {"level": level, "messages": len(messages)}, ctx)
+                payload = {"level": level, "messages": len(messages), "success": success}
+                if error:
+                    payload["error"] = error
+                self._emit("agent", "compact_after", payload, ctx)
         return True, "", messages
 
     def post_llm(self, ctx, node_label: str = "", model: str = "", usage: dict | None = None, content: str = "") -> None:

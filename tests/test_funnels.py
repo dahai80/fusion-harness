@@ -119,6 +119,63 @@ async def test_run_tool_blocked_returns_error(monkeypatch):
     assert "Blocked by permission" in result_str
 
 
+class _RaisingCompactor:
+    def should_compact(self, messages):
+        return "warning"
+
+    def compact(self, messages, level):
+        raise RuntimeError("mlx down")
+
+
+class _OkCompactor:
+    def should_compact(self, messages):
+        return "warning"
+
+    def compact(self, messages, level):
+        return messages[:1]
+
+
+class _Ctx:
+    session_id = "s-compact"
+
+
+@pytest.mark.asyncio
+async def test_pre_llm_compaction_failure_emits_success_false():
+    # Issue #7: a failed compaction must surface success=false + error on
+    # compact_after, and the original messages must pass through unchanged.
+    from fusion_harness.funnels import LLMFunnel
+
+    funnel = LLMFunnel(compactor=_RaisingCompactor())
+    msgs = [{"role": "user", "content": "x"}, {"role": "user", "content": "y"}]
+    proceed, reason, out = await funnel.pre_llm(_Ctx(), "n1", "m1", msgs)
+    assert proceed and reason == ""
+    assert out == msgs  # original messages preserved
+    after = [
+        e for e in funnel.lifecycle.replay(session_id="s-compact") if e.event == "compact_after"
+    ]
+    assert len(after) == 1
+    assert after[0].payload["success"] is False
+    assert "mlx down" in after[0].payload["error"]
+
+
+@pytest.mark.asyncio
+async def test_pre_llm_compaction_success_carries_success_true():
+    from fusion_harness.funnels import LLMFunnel
+
+    funnel = LLMFunnel(compactor=_OkCompactor())
+    proceed, reason, out = await funnel.pre_llm(
+        _Ctx(), "n1", "m1", [{"role": "user", "content": "x"}]
+    )
+    assert proceed and reason == ""
+    assert len(out) == 1
+    after = [
+        e for e in funnel.lifecycle.replay(session_id="s-compact") if e.event == "compact_after"
+    ]
+    assert len(after) == 1
+    assert after[0].payload["success"] is True
+    assert "error" not in after[0].payload
+
+
 def test_lifecycle_bus_subscribe_emit_replay():
     bus = LifecycleBus()
     seen = []
