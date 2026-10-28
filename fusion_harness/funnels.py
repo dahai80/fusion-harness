@@ -166,6 +166,9 @@ class FunnelOutcome:
     needs_approval: bool = False
     safety_result: Any = None
     decision_log: list = field(default_factory=list)
+    # #9: engine-level confirmation decision (tier/risk/confirmation), so
+    # consumers don't re-derive a local policy layer. None = no policy wired.
+    confirmation: dict | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -174,6 +177,7 @@ class FunnelOutcome:
             "reason": self.reason,
             "needs_approval": self.needs_approval,
             "decision_log": self.decision_log,
+            "confirmation": self.confirmation,
         }
 
 
@@ -218,6 +222,7 @@ class ToolFunnel:
         category: str = "tool_call",
         node_label: str = "",
         content_repr: str = "",
+        can_confirm: bool = True,
     ) -> FunnelOutcome:
         """Run the admission chain. Does NOT execute the tool."""
         args = args or {}
@@ -276,14 +281,28 @@ class ToolFunnel:
         else:
             try:
                 perm_decision = self.permissions.evaluate(
-                    tool_name, args, ctx=ctx, readonly_hint=tool_name in readonly
+                    tool_name,
+                    args,
+                    ctx=ctx,
+                    readonly_hint=tool_name in readonly,
+                    can_confirm=can_confirm,
                 )
             except Exception as e:
                 logger.warning("permission evaluate error tool=%s err=%s", tool_name, e)
                 perm_decision = PermissionDecision(decision="ask", rule_source="error_fallback", reason=f"permission error: {e}")
+            # #9: carry the engine's confirmation decision on every outcome.
+            conf = None
+            if getattr(perm_decision, "tier", ""):
+                conf = {
+                    "tier": perm_decision.tier,
+                    "risk": perm_decision.risk,
+                    "confirmation": perm_decision.confirmation,
+                }
             if perm_decision.decision == "deny":
                 _mark("permission", "deny", perm_decision.reason)
-                return self._deny(ctx, tool_name, args, "permission", log, perm_decision.reason)
+                denied = self._deny(ctx, tool_name, args, "permission", log, perm_decision.reason)
+                denied.confirmation = conf
+                return denied
             _mark("permission", perm_decision.decision, perm_decision.reason)
             if perm_decision.decision == "ask":
                 return FunnelOutcome(
@@ -293,6 +312,7 @@ class ToolFunnel:
                     args=args,
                     needs_approval=True,
                     decision_log=log,
+                    confirmation=conf,
                 )
 
         # Stage 2b: SafetyGateway evaluation (legacy backend evaluator — the
@@ -338,6 +358,12 @@ class ToolFunnel:
 
         _mark("admit", "allow", "all gates passed")
         out = FunnelOutcome(allowed=True, args=args, decision_log=log)
+        if perm_decision is not None and getattr(perm_decision, "tier", ""):
+            out.confirmation = {
+                "tier": perm_decision.tier,
+                "risk": perm_decision.risk,
+                "confirmation": perm_decision.confirmation,
+            }
         if perm_decision is not None:
             out.decision_log.append({
                 "stage": "permission",

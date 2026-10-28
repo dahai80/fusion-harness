@@ -8,10 +8,12 @@ from fusion_harness.compactor import CompactionConfig, Compactor
 from fusion_harness.funnels import LifecycleBus, LLMFunnel, ToolFunnel
 from fusion_harness.hooks import HookConfig, HookEngine, HookResult
 from fusion_harness.permissions import (
+    ConfirmationPolicy,
     PermissionDecision,
     PermissionEngine,
     PermissionMode,
     PermissionRule,
+    score_tool_risk,
 )
 
 KERNEL_VERSION = "0.2.1"
@@ -20,6 +22,7 @@ __all__ = [
     "KERNEL_VERSION",
     "CompactionConfig",
     "Compactor",
+    "ConfirmationPolicy",
     "HookConfig",
     "HookEngine",
     "HookResult",
@@ -30,4 +33,5 @@ __all__ = [
     "PermissionMode",
     "PermissionRule",
     "ToolFunnel",
+    "score_tool_risk",
 ]

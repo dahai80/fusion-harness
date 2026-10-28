@@ -126,3 +126,146 @@ def test_invalid_rule_action_rejected():
     before = engine.rules_count()
     engine.add_rule(PermissionRule(action="bogus", tool="shell"))
     assert engine.rules_count() == before
+
+
+# --- #9: confirmation-policy tiers ------------------------------------------
+
+
+def _armed_engine(policy=None):
+    engine = PermissionEngine(confirmation_policy=policy)
+    engine.add_rule(PermissionRule(action="allow", tool="read_tool"))
+    engine.add_rule(PermissionRule(action="ask", tool="write_tool"))
+    engine.add_rule(PermissionRule(action="allow", tool="shell_tool"))
+    return engine
+
+
+def test_risk_scorer_bands():
+    from fusion_harness.permissions import score_tool_risk
+
+    assert score_tool_risk("shell", {"command": "rm -rf /tmp/x"})[1] == "destructive"
+    assert score_tool_risk("shell", {"command": "curl http://example.com"})[1] == "network"
+    assert score_tool_risk("file_write", {"path": "/tmp/a"})[1] == "write"
+    assert score_tool_risk("read_tool", {})[1] == "readonly"
+
+
+def test_tier_never_bypasses_ask():
+    from fusion_harness.permissions import ConfirmationPolicy
+
+    engine = _armed_engine(ConfirmationPolicy(tier="never"))
+    decision = engine.evaluate("write_tool", {})
+    assert decision.decision == "allow"
+    assert decision.confirmation == "auto"
+    assert decision.tier == "never"
+
+
+def test_tier_always_escalates_allow():
+    from fusion_harness.permissions import ConfirmationPolicy
+
+    engine = _armed_engine(ConfirmationPolicy(tier="always"))
+    decision = engine.evaluate("read_tool", {})
+    assert decision.decision == "ask"
+    assert decision.confirmation == "confirm"
+    assert decision.rule_source == "confirmation:always"
+
+
+def test_tier_always_parallel_path_cannot_pause_denies():
+    from fusion_harness.permissions import ConfirmationPolicy
+
+    engine = _armed_engine(ConfirmationPolicy(tier="always"))
+    decision = engine.evaluate("read_tool", {}, can_confirm=False)
+    assert decision.decision == "deny"
+    assert "cannot pause" in decision.reason
+    assert decision.confirmation == "deny"
+
+
+def test_tier_risk_escalates_destructive_autopass():
+    from fusion_harness.permissions import ConfirmationPolicy
+
+    engine = _armed_engine(ConfirmationPolicy(tier="risk", risk_threshold=0.7))
+    # readonly_hint auto-allow is an auto-passed path (not an explicit rule
+    # allow), so a destructive payload must escalate to ask.
+    decision = engine.evaluate("other_tool", {"command": "TRUNCATE TABLE users"}, readonly_hint=True)
+    assert decision.decision == "ask"
+    assert decision.confirmation == "confirm"
+    assert decision.risk == 0.9
+
+
+def test_tier_risk_bypasses_low_risk_ask():
+    from fusion_harness.permissions import ConfirmationPolicy
+
+    engine = _armed_engine(ConfirmationPolicy(tier="risk", risk_threshold=0.7))
+    decision = engine.evaluate("write_tool", {})  # risk 0.0 (no destructive args)
+    assert decision.decision == "allow"
+    assert decision.confirmation == "auto"
+
+
+def test_tier_never_downgrades_deny():
+    from fusion_harness.permissions import ConfirmationPolicy
+
+    engine = _armed_engine(ConfirmationPolicy(tier="never"))
+    decision = engine.evaluate("shell", {"command": "rm -rf /"})
+    assert decision.decision == "deny"
+    assert decision.confirmation == "deny"
+
+
+def test_tier_risk_never_escalates_explicit_rule_allow():
+    from fusion_harness.permissions import ConfirmationPolicy
+
+    engine = _armed_engine(ConfirmationPolicy(tier="risk", risk_threshold=0.7))
+    decision = engine.evaluate("read_tool", {"command": "TRUNCATE TABLE users"})
+    assert decision.decision == "allow"
+    assert decision.rule_source.startswith("rule:")
+    assert decision.confirmation == "auto"
+
+
+def test_tool_overrides_take_precedence():
+    from fusion_harness.permissions import ConfirmationPolicy
+
+    policy = ConfirmationPolicy(tier="never", tool_overrides={r"write_.*": "always"})
+    engine = _armed_engine(policy)
+    assert engine.evaluate("write_tool", {}).decision == "ask"
+    assert engine.evaluate("read_tool", {}).decision == "allow"
+
+
+def test_bypass_mode_ignores_confirmation_policy():
+    from fusion_harness.permissions import ConfirmationPolicy
+
+    engine = PermissionEngine(mode=PermissionMode.BYPASS, confirmation_policy=ConfirmationPolicy(tier="always"))
+    assert engine.evaluate("read_tool", {}).decision == "allow"
+
+
+def test_funnel_outcome_carries_confirmation():
+    from fusion_harness.funnels import ToolFunnel
+    from fusion_harness.permissions import ConfirmationPolicy
+
+    engine = _armed_engine(ConfirmationPolicy(tier="risk", risk_threshold=0.7))
+    # other_tool is in the readonly set but has no explicit rule, so admission
+    # auto-passes at the heuristic gate — the destructive payload must escalate.
+    funnel = ToolFunnel(permissions=engine, readonly_tools={"other_tool"})
+
+    import asyncio
+
+    async def _run():
+        return await funnel.admit(tool_name="other_tool", args={"command": "TRUNCATE TABLE users"})
+
+    out = asyncio.run(_run())
+    assert out.confirmation == {"tier": "risk", "risk": 0.9, "confirmation": "confirm"}
+    assert out.needs_approval
+
+
+def test_funnel_parallel_path_can_confirm_false_denies():
+    import asyncio
+
+    from fusion_harness.funnels import ToolFunnel
+    from fusion_harness.permissions import ConfirmationPolicy
+
+    engine = _armed_engine(ConfirmationPolicy(tier="always"))
+    funnel = ToolFunnel(permissions=engine)
+
+    async def _run():
+        return await funnel.admit(tool_name="read_tool", args={}, can_confirm=False)
+
+    out = asyncio.run(_run())
+    assert not out.allowed
+    assert out.blocked_by == "permission"
+    assert out.confirmation == {"tier": "always", "risk": 0.0, "confirmation": "deny"}

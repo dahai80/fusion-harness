@@ -148,6 +148,103 @@ class PermissionDecision:
     decision: str
     rule_source: str = ""
     reason: str = ""
+    # #9: confirmation-policy outcome — tier evaluated, deterministic risk
+    # score, and the tier's effect on the decision (auto/confirm/deny).
+    tier: str = ""
+    risk: float | None = None
+    confirmation: str = ""
+
+
+# #9: OpenHands-parity confirmation tiers, evaluated INSIDE the engine so all
+# consumers share one decision point instead of stacking local policy layers.
+CONFIRMATION_TIERS = ("always", "never", "risk")
+
+# Deterministic risk bands (never LLM-judged): destructive > network > write >
+# readonly. Maintained once here; extensible via ConfirmationPolicy overrides.
+RISK_DESTRUCTIVE = 0.9
+RISK_NETWORK = 0.6
+RISK_WRITE = 0.3
+RISK_READONLY = 0.0
+
+_DESTRUCTIVE_BAND_RE = (
+    r"\brm\s+-r",
+    r"\bDROP\s+(TABLE|DATABASE)",
+    r"\bDELETE\s+FROM",
+    r"\bTRUNCATE\s+TABLE",
+    r"\bmkfs",
+    r"\bsudo\s+rm",
+    r"\bshutil\.rmtree",
+    r"\bdd\s+if=.+\s+of=/dev/",
+    r"\bgit\s+push\s+--force",
+    r">\s*/dev/sd",
+)
+_NETWORK_BAND_RE = (
+    r"\b(curl|wget|scp|ssh|nc|netcat|ftp)\b",
+    r"https?://",
+)
+_WRITE_TOOL_RE = (
+    r"write",
+    r"edit",
+    r"save",
+    r"delete",
+    r"remove",
+    r"create",
+    r"update",
+    r"patch",
+    r"mkdir",
+    r"touch",
+    r"move",
+    r"rename",
+)
+
+
+def score_tool_risk(tool_name: str, args: Any) -> tuple[float, str]:
+    # Single deterministic risk scorer: first matching band wins (highest
+    # band checked first). Returns (score, band) for audit trails.
+    blob = _serialize_args(args)
+    for pattern in _DESTRUCTIVE_BAND_RE:
+        if re.search(pattern, blob, re.IGNORECASE):
+            return RISK_DESTRUCTIVE, "destructive"
+    for pattern in _NETWORK_BAND_RE:
+        if re.search(pattern, blob, re.IGNORECASE):
+            return RISK_NETWORK, "network"
+    for pattern in _WRITE_TOOL_RE:
+        if re.search(pattern, tool_name, re.IGNORECASE):
+            return RISK_WRITE, "write"
+    return RISK_READONLY, "readonly"
+
+
+@dataclass
+class ConfirmationPolicy:
+    # tier: "always" (escalate to approval) / "never" (bypass asks) /
+    # "risk" (escalate auto-passed risky calls, bypass low-risk asks).
+    # tool_overrides: tool name (regex, same matching as rules) -> tier.
+    tier: str = "risk"
+    risk_threshold: float = 0.7
+    tool_overrides: dict[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.tier not in CONFIRMATION_TIERS:
+            logger.warning("unknown confirmation tier %r, fallback risk", self.tier)
+            self.tier = "risk"
+
+    def tier_for(self, tool_name: str) -> str:
+        for pattern, tier in self.tool_overrides.items():
+            if tier not in CONFIRMATION_TIERS:
+                continue
+            try:
+                if re.search(pattern, tool_name):
+                    return tier
+            except re.error as exc:
+                logger.warning("invalid tool_overrides regex %r: %s", pattern, exc)
+        return self.tier
+
+    def to_dict(self) -> dict:
+        return {
+            "tier": self.tier,
+            "risk_threshold": self.risk_threshold,
+            "tool_overrides": dict(self.tool_overrides),
+        }
 
 
 def _serialize_args(args: Any) -> str:
@@ -183,8 +280,11 @@ class PermissionEngine:
         mode: PermissionMode | str = PermissionMode.DEFAULT,
         readonly_tools: set[str] | None = None,
         plan_readonly_tools: set[str] | None = None,
+        confirmation_policy: ConfirmationPolicy | None = None,
     ):
         self.mode = self._normalize_mode(mode)
+        # #9: tier-aware confirmation, evaluated inside the engine.
+        self.confirmation_policy = confirmation_policy
         self._readonly_tools = set(readonly_tools or ())
         # Legacy plan-mode readonly allowlist (runtime _plan_readonly_tools) —
         # honored by the plan gate so stub/legacy registries keep behavior.
@@ -253,7 +353,109 @@ class PermissionEngine:
     def get_mode(self) -> str:
         return self.mode.value
 
+    def set_confirmation_policy(self, policy: ConfirmationPolicy | None) -> None:
+        self.confirmation_policy = policy
+        if policy is not None:
+            logger.info(
+                "confirmation policy set tier=%s threshold=%s overrides=%d",
+                policy.tier,
+                policy.risk_threshold,
+                len(policy.tool_overrides),
+            )
+
     def evaluate(
+        self,
+        tool_name: str,
+        args: Any,
+        ctx: Any = None,
+        readonly_hint: bool = False,
+        can_confirm: bool = True,
+    ) -> PermissionDecision:
+        decision = self._evaluate_rules(tool_name, args, ctx, readonly_hint)
+        policy = self.confirmation_policy
+        if policy is None or self.mode == PermissionMode.BYPASS:
+            return decision
+        return self._apply_confirmation(policy, decision, tool_name, args, can_confirm)
+
+    def _apply_confirmation(
+        self,
+        policy: ConfirmationPolicy,
+        decision: PermissionDecision,
+        tool_name: str,
+        args: Any,
+        can_confirm: bool,
+    ) -> PermissionDecision:
+        # One decision point: the tier reshapes the rule outcome, it never
+        # sees it afterwards. Deny is never downgraded by any tier.
+        tier = policy.tier_for(tool_name)
+        risk, band = score_tool_risk(tool_name, args)
+        decision.tier = tier
+        decision.risk = risk
+        if decision.decision == "deny":
+            decision.confirmation = "deny"
+            return decision
+        if tier == "always":
+            if decision.decision == "ask":
+                decision.confirmation = "confirm"
+                return decision
+            if not can_confirm:
+                # #9 parallel-path semantics: approval required but the call
+                # site cannot pause -> fail-closed, never silent auto-pass.
+                decision.decision = "deny"
+                decision.rule_source = "confirmation:always"
+                decision.reason = (
+                    "confirmation required (tier=always) but call site cannot pause; retry sequentially"
+                )
+                decision.confirmation = "deny"
+                self._stats["denies"] += 1
+                return decision
+            decision.decision = "ask"
+            decision.rule_source = "confirmation:always"
+            decision.reason = "escalated to approval by confirmation tier=always"
+            decision.confirmation = "confirm"
+            self._stats["asks"] += 1
+            return decision
+        if tier == "never":
+            if decision.decision == "ask":
+                decision.decision = "allow"
+                decision.rule_source = "confirmation:never"
+                decision.reason = "ask bypassed by confirmation tier=never"
+            decision.confirmation = "auto"
+            return decision
+        # tier == "risk": bypass low-risk asks, escalate risky auto-passes.
+        # Explicit rule allows (user-authored intent) are never escalated.
+        if decision.decision == "ask":
+            if risk >= policy.risk_threshold:
+                decision.confirmation = "confirm"
+            else:
+                decision.decision = "allow"
+                decision.rule_source = "confirmation:risk"
+                decision.reason = (
+                    f"low-risk ask (risk={risk} < {policy.risk_threshold}) bypassed by tier=risk"
+                )
+                decision.confirmation = "auto"
+            return decision
+        if risk >= policy.risk_threshold and not decision.rule_source.startswith("rule:"):
+            if not can_confirm:
+                decision.decision = "deny"
+                decision.rule_source = "confirmation:risk"
+                decision.reason = (
+                    f"high-risk call (risk={risk}) requires approval but call site "
+                    "cannot pause; retry sequentially"
+                )
+                decision.confirmation = "deny"
+                self._stats["denies"] += 1
+                return decision
+            decision.decision = "ask"
+            decision.rule_source = "confirmation:risk"
+            decision.reason = f"high-risk call (risk={risk}, band={band}) escalated by tier=risk"
+            decision.confirmation = "confirm"
+            self._stats["asks"] += 1
+            return decision
+        decision.confirmation = "auto"
+        return decision
+
+    def _evaluate_rules(
         self,
         tool_name: str,
         args: Any,
@@ -458,10 +660,17 @@ class PermissionEngine:
 
 
 __all__ = [
+    "CONFIRMATION_TIERS",
+    "ConfirmationPolicy",
     "DANGEROUS_PATTERNS",
     "PERMISSIONS_FILE",
     "PermissionDecision",
     "PermissionEngine",
     "PermissionMode",
     "PermissionRule",
+    "RISK_DESTRUCTIVE",
+    "RISK_NETWORK",
+    "RISK_READONLY",
+    "RISK_WRITE",
+    "score_tool_risk",
 ]
