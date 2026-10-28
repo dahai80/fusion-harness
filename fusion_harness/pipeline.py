@@ -143,9 +143,21 @@ class ToolPipeline:
     def guards(self) -> tuple[MonotonicGuard, ...]:
         return self._guards
 
-    async def run(self, ctx: Any = None, tool_name: str = "", args: dict | None = None,
-                  executor: Callable[[dict], Any] | None = None,
-                  node_label: str = "") -> PipelineOutcome:
+    async def run(
+        self,
+        ctx: Any = None,
+        tool_name: str = "",
+        args: dict | None = None,
+        executor: Callable[[dict], Any] | None = None,
+        node_label: str = "",
+        approver: Any = None,
+        admission_only: bool = False,
+    ) -> PipelineOutcome:
+        # approver: per-call responder override — a shared pipeline instance
+        # stays safe under concurrent admits (no instance-state mutation).
+        # admission_only: run stages 1-3 and stop before dispatch; consumers
+        # that execute the tool body elsewhere get the admission verdict.
+        approver = approver if approver is not None else self.approver
         args = dict(args or {})
         log: list[dict] = []
 
@@ -168,6 +180,8 @@ class ToolPipeline:
         approval_required = False
         if self.permission_engine is not None:
             decision = self.permission_engine.evaluate(tool_name, args, ctx=ctx)
+            if inspect.isawaitable(decision):
+                decision = await decision
             _mark("policy", decision.decision, decision.reason)
             if decision.decision == "deny":
                 self.metrics["denied_pre"] += 1
@@ -186,12 +200,14 @@ class ToolPipeline:
 
         # Stage 3: one-shot fail-closed approval.
         if approval_required:
-            if self.approver is None:
+            if approver is None:
                 self.metrics["denied_approval"] += 1
                 _mark("approval", "deny", "no approval responder wired (fail-closed)")
                 return self._deny("approval", "approval required but no responder wired", log)
             try:
-                answer = self.approver.request(tool_name, args)
+                answer = approver.request(tool_name, args)
+                if inspect.isawaitable(answer):
+                    answer = await answer
             except Exception as exc:
                 logger.warning("approval responder error tool=%s: %s", tool_name, exc)
                 answer = None
@@ -202,6 +218,15 @@ class ToolPipeline:
             _mark("approval", "allow", "approved by responder")
 
         # Stage 4: around-dispatch (timeout, retry, metrics).
+        if admission_only:
+            # Admission-only consumers (e.g. agent-studio's funnel choke
+            # point) execute the tool body themselves; the pipeline verdict
+            # covers stages 1-3 only.
+            _mark("admit", "allow", "admission-only run, dispatch deferred")
+            return PipelineOutcome(
+                allowed=True, result=None, reason="", decision_log=log, blocked_by=""
+            )
+
         if executor is None:
             return self._deny("dispatch", "no executor wired", log)
         started = time.time()

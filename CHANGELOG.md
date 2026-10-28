@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.3.0 (2026-10-28)
+
+### Segmented tool pipeline, durable session log, engine-level confirmation tiers (#4/#5/#9)
+
+New public API (semver-minor: additive, no breaking changes):
+
+- `fusion_harness.session_log` (#4): durable append-only `SessionEventLog`
+  (schema-versioned frozen `SessionEvent` records, monotonic seq, JSONL +
+  fsync persistence, `SessionEventLog.load()` restart reconstruction,
+  `replay()` reducer with explicit `incomplete_tool_calls` for crash
+  mid-tool-call). Live `LifecycleEvent`s are structurally rejected
+  (`TypeError`) — domain separation, not convention.
+- `fusion_harness.pipeline` (#5): five-stage `ToolPipeline` — pre-execute
+  waterfall → identity-protected `MonotonicGuard`s (immutable tuple, deny is
+  final) → one-shot fail-closed approval → around-dispatch (timeout/retry) →
+  post-execute waterfall, ending in a frozen `ToolResult`.
+- `PermissionEngine` confirmation tiers (#9): `ConfirmationPolicy`
+  (always/never/risk) + deterministic `score_tool_risk()` bands evaluated
+  inside the engine; `evaluate(can_confirm=...)` fail-closed on
+  non-interactive paths; `FunnelOutcome.confirmation` carries the decision.
+- `LLMFunnel.pre_llm` compaction success tracking (#7): `compact_after`
+  payload carries `success` + error; failed compaction passes original
+  messages through unchanged.
+
+0.3.0 consumer-integration additions:
+
+- `ToolPipeline.run(approver=...)`: per-call approval responder — shared
+  pipeline instances stay safe under concurrent admits.
+- `ToolPipeline.run(admission_only=True)`: stages 1-3 only, dispatch
+  deferred (consumers that execute tool bodies elsewhere).
+- `permission_engine.evaluate()` and `approver.request()` may be async
+  (awaitables are awaited in place) — async funnel-backed policy adapters
+  and interactive approval bridges work without wrappers.
+
+Consumer adoption: fusion-agent-studio routes every tool admission through
+`ToolPipeline` (single admission path, no side doors) and records every
+session into a durable `SessionEventLog` — issues #4/#5 closed end-to-end.
+
+## 0.2.2 (2026-10-27)
+
+Features of #4/#5/#9 as initially released to PyPI (superseded by 0.3.0's
+consumer-integration additions above).
+
 ## 0.2.1 (2026-10-26)
 
 ### PyPI release pipeline (#3)

@@ -21,9 +21,11 @@ approval).
 ## Modules
 
 - `fusion_harness.funnels` — `LLMFunnel`, `ToolFunnel`, `LifecycleBus` (budget enforcement + lifecycle events)
-- `fusion_harness.permissions` — `PermissionEngine` (deny-first permission checks)
+- `fusion_harness.permissions` — `PermissionEngine` (deny-first permission checks) + `ConfirmationPolicy` tiers and the deterministic `score_tool_risk()` bands, evaluated inside the engine (issue #9)
 - `fusion_harness.hooks` — `HookEngine` (lifecycle hook registry + dispatch)
 - `fusion_harness.compactor` — `Compactor` (context window compaction with retention)
+- `fusion_harness.pipeline` — `ToolPipeline` five-stage segmented tool execution: pre-execute waterfall, identity-protected monotonic guards, one-shot fail-closed approval, around-dispatch timeout/retry, post-execute waterfall — ending in a frozen `ToolResult` (issue #5)
+- `fusion_harness.session_log` — `SessionEventLog` durable append-only, schema-versioned, replayable session event log; live `LifecycleEvent`s are structurally rejected (issue #4)
 
 ## Security defaults (0.2.0, breaking)
 

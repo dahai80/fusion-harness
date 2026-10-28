@@ -29,7 +29,7 @@ from fusion_harness.session_log import (
     SessionState,
 )
 
-KERNEL_VERSION = "0.2.1"
+KERNEL_VERSION = "0.3.0"
 
 __all__ = [
     "KERNEL_VERSION",

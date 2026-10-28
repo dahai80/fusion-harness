@@ -223,3 +223,81 @@ async def test_confirmation_policy_integrates_via_engine():
         executor=lambda a: "ran",
     )
     assert out.allowed
+
+
+@pytest.mark.asyncio
+async def test_per_call_approver_overrides_instance():
+    # Shared pipeline under concurrent admits: the responder arrives per
+    # call, never as instance state, so admits cannot cross-answer.
+    class Approver:
+        def __init__(self, answer):
+            self.answer = answer
+            self.calls = 0
+
+        def request(self, tool, args):
+            self.calls += 1
+            return self.answer
+
+    yes, no = Approver(True), Approver(False)
+    pipeline = ToolPipeline(permission_engine=_engine_armed())
+    out_yes = await pipeline.run(
+        tool_name="risky_tool", args={}, executor=lambda a: "ran", approver=yes
+    )
+    out_no = await pipeline.run(
+        tool_name="risky_tool", args={}, executor=lambda a: "ran", approver=no
+    )
+    assert out_yes.allowed and not out_no.allowed
+    assert yes.calls == 1 and no.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_async_engine_adapter_and_approver():
+    # Consumer integration shape (#5 AC4): the policy stage may be an async
+    # adapter (e.g. a funnel-backed engine) and the responder may be async
+    # (e.g. an interactive approval bridge). Both are awaited in place.
+
+    class AsyncEngine:
+        def __init__(self):
+            self.evaluated = []
+
+        async def evaluate(self, tool_name, args, ctx=None):
+            self.evaluated.append(tool_name)
+            from fusion_harness.permissions import PermissionDecision
+
+            return PermissionDecision(decision="ask" if tool_name == "risky_tool" else "allow")
+
+    class AsyncApprover:
+        async def request(self, tool, args):
+            return tool == "risky_tool"
+
+    engine = AsyncEngine()
+    pipeline = ToolPipeline(permission_engine=engine)
+    out = await pipeline.run(
+        tool_name="risky_tool",
+        args={},
+        executor=lambda a: "ran",
+        approver=AsyncApprover(),
+    )
+    assert out.allowed and out.result.output == "ran"
+    out2 = await pipeline.run(tool_name="safe_tool", args={}, executor=lambda a: "ran2")
+    assert out2.allowed and out2.result.output == "ran2"
+    assert engine.evaluated == ["risky_tool", "safe_tool"]
+
+
+@pytest.mark.asyncio
+async def test_admission_only_skips_dispatch():
+    # Admission-only consumers defer the tool body; the pipeline still
+    # enforces stages 1-3 (policy ask without a responder stays fail-closed).
+    calls = []
+    pipeline = ToolPipeline(permission_engine=_engine_armed())
+    out = await pipeline.run(
+        tool_name="safe_tool", args={}, executor=lambda a: calls.append(1), admission_only=True
+    )
+    assert out.allowed and out.result is None and calls == []
+    stages = [e["stage"] for e in out.decision_log]
+    assert "admit" in stages
+
+    out2 = await pipeline.run(
+        tool_name="risky_tool", args={}, executor=lambda a: calls.append(1), admission_only=True
+    )
+    assert not out2.allowed and out2.blocked_by == "approval" and calls == []

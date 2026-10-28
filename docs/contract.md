@@ -58,3 +58,39 @@ Rules:
 | `FUSION_COMPACT_MLX=0` | enabled | Disables LLM summarization (deterministic only) |
 
 Breaking default change in 0.2.0: enforcement flipped from opt-in (`FUSION_FUNNEL_REQUIRE_PERMISSIONS=1` to enable) to opt-out. Operators running headless must set `FUSION_FUNNEL_PERMISSIONS=off` (or `FUSION_FUNNEL_REQUIRE_PERMISSIONS=0`).
+
+## 6. Segmented Tool Pipeline (0.3.0, issue #5)
+
+`ToolPipeline.run()` is an alternative admission+execution spine to `ToolFunnel.admit()` — segmented with ordering invariants:
+
+1. **pre-execute** waterfall: `pre_hook` (rewrite args / raise `PipelineBlocked`), then `permission_engine.evaluate` (deny short-circuits before guards; ask sets approval-required)
+2. **monotonic guards**: identity-protected — stored as an immutable tuple with no setter or extension API; run unconditionally after the waterfall; a guard deny is final; a raising or invalid-verdict guard fails closed
+3. **one-shot fail-closed approval**: absent responder, unanswerable responder (`None` answer), or raising responder = deny, executor never invoked; never retried
+4. **around-dispatch**: timeout (`timeout_s`) + retry (`retries`) around the executor (sync or async)
+5. **post-execute** waterfall: accept / replace (return a new `ToolResult`) / block (raise `PipelineBlocked`)
+
+Contract rules:
+- The emitted final `ToolResult` is a frozen dataclass — mutation raises `FrozenInstanceError`.
+- `run(approver=...)` is the per-call responder (overrides the instance attr); shared pipelines are safe under concurrent admits.
+- `run(admission_only=True)` stops after stage 3 — verdict covers admission only, dispatch deferred to the consumer.
+- `permission_engine.evaluate()` and `approver.request()` may return awaitables; the pipeline awaits them in place.
+- A policy `deny` short-circuits before the guard stage (guards never observe denied calls).
+
+## 7. Durable Session Event Log (0.3.0, issue #4)
+
+Structural domain separation: **durable** events are `session_log.SessionEvent`; **live** events are `funnels.LifecycleEvent`. `SessionEventLog.append_event()` raises `TypeError` on anything that is not a `SessionEvent`.
+
+- Append-only: monotonically increasing `seq`; non-monotonic append raises `LogSchemaError`. JSONL persistence opens in append mode and fsyncs per event.
+- Every record carries `schema_version` (`SCHEMA_VERSION = 1`); `load()` rejects newer schemas (`LogSchemaError`) and corrupt lines.
+- `replay()` reduces to `SessionState`: `messages`, `completed_tool_calls` (paired by `call_id`), `compactions`, `ended`, `event_count`.
+- Crash mid-tool-call: a `tool_call` with no matching `tool_result`/`tool_error` is reported in `incomplete_tool_calls` — recorded explicitly, never dropped.
+- Unknown event types are preserved on replay (logged, not reduced) — forward compatible.
+
+## 8. Confirmation Tiers (0.3.0, issue #9)
+
+`ConfirmationPolicy(tier, risk_threshold, tool_overrides)` with tiers `always` / `never` / `risk` is evaluated **inside** `PermissionEngine` — one decision point, consumers must not stack local policy layers on top.
+
+- Deterministic risk bands (never LLM-judged): destructive 0.9 > network 0.6 > write 0.3 > readonly 0.0 (`score_tool_risk()`).
+- An explicit rule allow is never escalated; an explicit deny is never downgraded. `bypass` mode ignores the policy.
+- `evaluate(can_confirm=False)` (non-interactive path) fail-closes an ask-tier outcome into a deny with a retry-sequentially reason.
+- The engine decision carries `tier`/`risk`/`confirmation`; `FunnelOutcome.confirmation` exposes it to consumers.
