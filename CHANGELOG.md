@@ -7,7 +7,7 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.3.0
+version: 0.3.1
 updated: 2026-11-07
 owner: @dahai
 source_of_truth:
@@ -15,6 +15,21 @@ source_of_truth:
 ---
 
 # Changelog
+
+## 0.3.1 (2026-11-07)
+
+### Docs-system v1.0 adoption (P1 pilot)
+
+- Adopted the fusion docs-system v1.0 contract (grid position: platform x
+  developer): Tier 0 (`docs/product-page.md`, `docs/get-started.md`),
+  Tier 1 (`docs/api-reference.md`, `docs/config-reference.md`,
+  `docs/architecture.md`, recipes), frontmatter contract headers on
+  README/CHANGELOG/contract/ADR.
+- `ci/validate_docs.py`: stdlib-only static validator (frontmatter
+  completeness, doc-set inventory, source_of_truth paths, redline scan,
+  line budgets) + `docs.yml` CI workflow gating markdown PRs.
+- Validator messages/comments are English-only; English-only source
+  constraint applied repo-wide (PR #10).
 
 ## 0.3.0 (2026-10-28)
 
