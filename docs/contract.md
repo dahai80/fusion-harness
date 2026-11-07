@@ -1,3 +1,19 @@
+---
+doc_id: fusion-harness/architecture
+product: fusion-harness
+class: platform
+entry: developer
+doc_type: architecture
+title: { zh: "内核行为契约", en: "fusion-harness Kernel Contract" }
+audience: developer
+status: draft
+version: 0.3.0
+updated: 2026-11-07
+owner: @dahai
+source_of_truth:
+  - docs/contract.md
+---
+
 # fusion-harness Kernel Contract
 
 Version: 1.0 (matches fusion-harness 0.2.0) — the behavior every runtime built on this kernel (Python consumers directly, the TypeScript implementation in fusion-code) must reproduce. Tests in this repo are the executable form of this contract.

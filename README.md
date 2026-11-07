@@ -1,3 +1,19 @@
+---
+doc_id: fusion-harness/readme
+product: fusion-harness
+class: platform
+entry: developer
+doc_type: readme
+title: { zh: "fusion-harness 总览", en: "fusion-harness" }
+audience: developer
+status: draft
+version: 0.3.0
+updated: 2026-11-07
+owner: @dahai
+source_of_truth:
+  - README.md
+---
+
 # fusion-harness
 
 Canonical agent harness kernel for the Fusion ecosystem: budget funnels, lifecycle

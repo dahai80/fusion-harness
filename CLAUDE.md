@@ -1,3 +1,19 @@
+---
+doc_id: fusion-harness/guide/claude
+product: fusion-harness
+class: platform
+entry: developer
+doc_type: guide
+title: { zh: "仓库工程规则", en: "CLAUDE.md" }
+audience: developer
+status: draft
+version: 0.3.0
+updated: 2026-11-07
+owner: @dahai
+source_of_truth:
+  - CLAUDE.md
+---
+
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
