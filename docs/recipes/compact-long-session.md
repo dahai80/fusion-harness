@@ -9,7 +9,7 @@ audience: developer
 status: draft
 version: 0.3.0
 updated: 2026-11-07
-owner: @dahai
+owner: "@dahai"
 source_of_truth:
   - fusion_harness/compactor.py
   - tests/test_compactor.py
