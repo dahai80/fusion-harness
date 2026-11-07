@@ -1,3 +1,19 @@
+---
+doc_id: fusion-harness/changelog
+product: fusion-harness
+class: platform
+entry: developer
+doc_type: changelog
+title: { zh: "变更日志", en: "Changelog" }
+audience: developer
+status: draft
+version: 0.3.0
+updated: 2026-11-07
+owner: @dahai
+source_of_truth:
+  - CHANGELOG.md
+---
+
 # Changelog
 
 ## 0.3.0 (2026-10-28)

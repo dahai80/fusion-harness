@@ -1,3 +1,19 @@
+---
+doc_id: fusion-harness/architecture
+product: fusion-harness
+class: platform
+entry: developer
+doc_type: architecture
+title: { zh: "ADR 0001 组合单元", en: "ADR 0001: Composition unit stays service-level; in-process everything-is-a-plugin is rejected" }
+audience: developer
+status: draft
+version: 0.3.0
+updated: 2026-11-07
+owner: @dahai
+source_of_truth:
+  - docs/adr-0001-composition-unit.md
+---
+
 # ADR 0001: Composition unit stays service-level; in-process everything-is-a-plugin is rejected
 
 - Status: Accepted
