@@ -34,14 +34,27 @@ from fusion_harness.outbox import (
     ReceiptReplayed,
     ReconcileReport,
 )
+from fusion_harness.policies import (
+    Deadline,
+    DeadlineExceeded,
+    ReceiptCache,
+    RetryPolicy,
+    TokenLedger,
+    TransientError,
+    coalesce_retry,
+    idempotency_key,
+    run_with_retry,
+)
 
-KERNEL_VERSION = "0.4.0"
+KERNEL_VERSION = "0.5.0"
 
 __all__ = [
     "KERNEL_VERSION",
     "CompactionConfig",
     "Compactor",
     "ConfirmationPolicy",
+    "Deadline",
+    "DeadlineExceeded",
     "Effect",
     "HookConfig",
     "HookEngine",
@@ -57,13 +70,20 @@ __all__ = [
     "PermissionRule",
     "PipelineBlocked",
     "PipelineOutcome",
+    "ReceiptCache",
     "ReceiptReplayed",
     "ReconcileReport",
+    "RetryPolicy",
     "SessionEvent",
     "SessionEventLog",
     "SessionState",
+    "TokenLedger",
     "ToolFunnel",
     "ToolPipeline",
     "ToolResult",
+    "TransientError",
+    "coalesce_retry",
+    "idempotency_key",
+    "run_with_retry",
     "score_tool_risk",
 ]
