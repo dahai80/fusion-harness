@@ -7,7 +7,7 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.3.1
+version: 0.4.0
 updated: 2026-11-07
 owner: "@dahai"
 source_of_truth:
@@ -15,6 +15,23 @@ source_of_truth:
 ---
 
 # Changelog
+
+## 0.4.0 (2026-11-08)
+
+### Transactional outbox + idempotent command receipts + startup reconcile (#11)
+
+New public API (semver-minor: additive, no breaking changes):
+
+- `fusion_harness.outbox` (#11): stdlib-only SQLite (WAL, `synchronous=FULL`)
+  transactional outbox — `OutboxStore.commit_step()` persists run events and
+  side-effect enqueue in one transaction; `claim_next()`/`settle()` give
+  serial at-least-once delivery with a lease and **persisted** `available_at`
+  backoff; `record_command()`/`execute_command()` dedupe replays by
+  `command_id` receipt (duplicate-issue/PR guard, cowork#381);
+  `reconcile(orphaned_run_ids)` requeues expired leases and retires
+  orphaned-run effects at boot (t3code `ProviderRuntimeRecoveryService`
+  pattern). Design note: `docs/adr-0002-transactional-outbox.md`.
+
 
 ## 0.3.1 (2026-11-07)
 
