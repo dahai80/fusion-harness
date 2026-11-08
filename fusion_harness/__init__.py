@@ -28,14 +28,21 @@ from fusion_harness.session_log import (
     SessionEventLog,
     SessionState,
 )
+from fusion_harness.outbox import (
+    Effect,
+    OutboxStore,
+    ReceiptReplayed,
+    ReconcileReport,
+)
 
-KERNEL_VERSION = "0.3.0"
+KERNEL_VERSION = "0.4.0"
 
 __all__ = [
     "KERNEL_VERSION",
     "CompactionConfig",
     "Compactor",
     "ConfirmationPolicy",
+    "Effect",
     "HookConfig",
     "HookEngine",
     "HookResult",
@@ -43,12 +50,15 @@ __all__ = [
     "LifecycleBus",
     "LogSchemaError",
     "MonotonicGuard",
+    "OutboxStore",
     "PermissionDecision",
     "PermissionEngine",
     "PermissionMode",
     "PermissionRule",
     "PipelineBlocked",
     "PipelineOutcome",
+    "ReceiptReplayed",
+    "ReconcileReport",
     "SessionEvent",
     "SessionEventLog",
     "SessionState",
