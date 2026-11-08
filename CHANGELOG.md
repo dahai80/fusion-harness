@@ -7,14 +7,38 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.4.0
-updated: 2026-11-07
+version: 0.5.0
+updated: 2026-11-08
 owner: "@dahai"
 source_of_truth:
   - CHANGELOG.md
 ---
 
 # Changelog
+
+## 0.5.0 (2026-11-08)
+
+### Cross-cutting concern ownership: deadline / retry / idempotency / metering (#13)
+
+New public API (semver-minor: additive, no breaking changes), spec
+`verification-infra-spec-1108.md` §3.4 — one ownership point per concern,
+consumers opt in:
+
+- `Deadline` / `DeadlineExceeded`: caller declares the deadline once;
+  `child()` budgets only shrink; `check()` fails honestly at expiry
+  (cow#378 dual-timeout fix).
+- `RetryPolicy` + `run_with_retry()`: single retry mediation point —
+  exponential backoff capped at `max_backoff`, clamped to the deadline;
+  `coalesce_retry()` collapses stacked layer policies with a loud warning
+  (as#615 / as#649 outage-window fix). `TransientError` is the marker base
+  for retryable failures.
+- `idempotency_key()` + `ReceiptCache`: canonical `(scope, node, action)`
+  keys and a standalone receipt table; `OutboxStore` command receipts (#11)
+  now delegate to `ReceiptCache` — single idempotency implementation.
+- `TokenLedger`: append-only authoritative usage ledger; balance is always
+  a recomputed sum, JSONL-persisted and rebuildable.
+- `docs/ownership-map.md`: one-page ownership map with per-repo removal
+  list for private timeout/retry/idempotency code.
 
 ## 0.4.0 (2026-11-08)
 

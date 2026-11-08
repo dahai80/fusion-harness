@@ -7,7 +7,8 @@ Semantics mapping:
 - t3code EffectWorker claim/execute/settle  -> OutboxStore.claim_next() /
   settle() with persisted available_at backoff (at-least-once delivery)
 - t3code idempotent command receipts        -> OutboxStore.record_command()
-  (a replayed command_id is a no-op returning the recorded result)
+  (a replayed command_id is a no-op returning the recorded result;
+  backed by policies.ReceiptCache — #13 single idempotency ownership)
 - t3code ProviderRuntimeRecoveryService     -> OutboxStore.reconcile()
   (expired leases requeue, orphaned-run effects retire)
 
@@ -26,6 +27,8 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from fusion_harness.policies import ReceiptCache, idempotency_key
+
 logger = logging.getLogger(__name__)
 
 _SCHEMA_VERSION = 1
@@ -34,12 +37,6 @@ _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS command_receipts (
-    command_id TEXT PRIMARY KEY,
-    aggregate TEXT NOT NULL DEFAULT '',
-    result TEXT,
-    created_at REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS run_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -139,6 +136,9 @@ class OutboxStore:
             "INSERT INTO meta(key, value) VALUES('schema_version', ?) ON CONFLICT(key) DO NOTHING",
             (str(_SCHEMA_VERSION),),
         )
+        # #13: command receipts are a ReceiptCache over this connection —
+        # single idempotency implementation owned by policies.py
+        self._receipts = ReceiptCache(conn=self._conn, clock=clock)
         logger.info("outbox store opened db=%s lease=%.1fs", db_path, lease_seconds)
 
     def close(self) -> None:
@@ -154,25 +154,11 @@ class OutboxStore:
         *args: Any,
         **kwargs: Any,
     ) -> tuple[Any, bool]:
-        # Idempotent command execution: a replayed command_id returns the
-        # recorded result without re-running fn (cow#381 duplicate-issue
+        # Idempotent command execution, delegated to the shared
+        # ReceiptCache (#13): a replayed command_id returns the recorded
+        # result without re-running fn (cow#381 duplicate-issue
         # prevention lives at this layer).
-        row = self._conn.execute(
-            "SELECT result FROM command_receipts WHERE command_id = ?",
-            (command_id,),
-        ).fetchone()
-        if row is not None:
-            logger.info("command receipt replayed id=%s aggregate=%s", command_id, aggregate)
-            return (json.loads(row["result"]) if row["result"] is not None else None), True
-        result = fn(*args, **kwargs)
-        now = self._clock()
-        self._conn.execute(
-            "INSERT INTO command_receipts(command_id, aggregate, result, created_at) "
-            "VALUES(?, ?, ?, ?)",
-            (command_id, aggregate, json.dumps(result), now),
-        )
-        logger.info("command receipt recorded id=%s aggregate=%s", command_id, aggregate)
-        return result, False
+        return self._receipts.first(command_id, aggregate, fn, *args, **kwargs)
 
     def execute_command(
         self,
@@ -188,10 +174,7 @@ class OutboxStore:
         return result
 
     def has_receipt(self, command_id: str) -> bool:
-        row = self._conn.execute(
-            "SELECT 1 FROM command_receipts WHERE command_id = ?", (command_id,)
-        ).fetchone()
-        return row is not None
+        return self._receipts.has(command_id)
 
     # -------------------------------------------------- transactional outbox
 
@@ -222,7 +205,9 @@ class OutboxStore:
             for fx in effects:
                 receipt_key = str(
                     fx.get("receipt_key")
-                    or f"{run_id}:{fx.get('node_id', '')}:{fx.get('action', '')}"
+                    or idempotency_key(
+                        run_id, str(fx.get("node_id", "")), str(fx.get("action", ""))
+                    )
                 )
                 cur = self._conn.execute(
                     "INSERT OR IGNORE INTO outbox("
