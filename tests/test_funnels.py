@@ -56,9 +56,7 @@ async def test_opt_out_bypasses_engine_entirely(monkeypatch, caplog):
     monkeypatch.setenv("FUSION_FUNNEL_PERMISSIONS", "off")
     caplog.set_level(logging.WARNING, logger="fusion_harness.funnels")
     funnel = ToolFunnel(permissions=_engine())
-    outcome = await funnel.admit(
-        tool_name="shell", args={"command": "rm -rf /"}
-    )
+    outcome = await funnel.admit(tool_name="shell", args={"command": "rm -rf /"})
     assert outcome.allowed
     assert any("DISABLED" in r.message for r in caplog.records)
 

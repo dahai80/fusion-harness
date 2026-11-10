@@ -7,14 +7,46 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.5.0
-updated: 2026-11-08
+version: 0.6.0
+updated: 2026-11-10
 owner: "@dahai"
 source_of_truth:
   - CHANGELOG.md
 ---
 
 # Changelog
+
+## 0.6.0 (2026-11-10)
+
+### Provider seam: adapter contract + ACP-compatible wire (#15)
+
+Pattern adoption from t3code (provider-core / provider-acp server seam) —
+re-implemented stdlib-only, no upstream code vendored. One adapter per agent
+runtime; the host is runtime-agnostic; the seam is a transport, not a second
+policy engine (funnels / permission engine / compaction apply upstream,
+unchanged).
+
+New public API (semver-minor: additive, no breaking changes):
+
+- `fusion_harness.provider.events`: UI-agnostic `SessionEvent` model +
+  `EventBus` fan-out (stable wire event-type constants).
+- `fusion_harness.provider.adapter`: `ProviderAdapter` abstract contract
+  (start/stop/new_session/prompt/respond_permission/close_session) and
+  `AdapterHost` — registry, id allocation, and the HiTL permission seam
+  (`request_permission` is fail-closed: no handler or handler error = deny).
+- `fusion_harness.provider.wire`: ACP-compatible JSON-RPC 2.0 codec,
+  line-delimited (initialize / session-new / session-prompt /
+  session-update notifications / request-permission round-trip).
+- `fusion_harness.provider.session`: `SubprocessSessionRuntime` — spawns the
+  adapter driver subprocess, lifecycle state machine
+  (new/ready/running/awaiting_permission/closed), streaming notifications to
+  events, driver permission requests routed through `AdapterHost`.
+- Top-level exports: `AdapterHost`, `ProviderAdapter`, `SubprocessSessionRuntime`,
+  `RuntimeNotReady`, `ProviderSessionEvent`, `ProviderSessionState`
+  (aliased; plain `SessionEvent`/`SessionState` remain the session-log types).
+
+Non-goals (unchanged from the issue): no t3code provider fleet, no source-control
+integration, no hosted relay, 100% offline.
 
 ## 0.5.0 (2026-11-08)
 

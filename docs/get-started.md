@@ -49,14 +49,17 @@ engine = PermissionEngine()
 engine.add_rule(PermissionRule(action="allow", tool="echo_tool"), layer="global")
 funnel = ToolFunnel(permissions=engine)
 
+
 async def exec_echo(args):
     return f"echo:{args['text']}"
+
 
 async def main():
     ok = await funnel.run_tool(None, "echo_tool", {"text": "hi"}, exec_echo)
     denied = await funnel.run_tool(None, "shell", {"command": "rm -rf /"}, exec_echo)
     print(ok)
     print(denied)
+
 
 asyncio.run(main())
 ```

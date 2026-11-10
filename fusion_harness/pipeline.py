@@ -11,6 +11,7 @@ Invariants (issue #5):
 - The final ToolResult is frozen; after the pipeline emits it, no stage
   can mutate it (dataclass frozen — mutation raises FrozenInstanceError).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -259,14 +260,24 @@ class ToolPipeline:
         _mark("emit", "frozen", "")
         if self.session_log is not None:
             try:
-                self.session_log.append("tool_result", {"tool": tool_name, "ok": final.ok,
-                                                        "output": final.output, "error": final.error})
+                self.session_log.append(
+                    "tool_result",
+                    {
+                        "tool": tool_name,
+                        "ok": final.ok,
+                        "output": final.output,
+                        "error": final.error,
+                    },
+                )
             except Exception as exc:
                 logger.warning("session log append failed tool=%s: %s", tool_name, exc)
-        return PipelineOutcome(allowed=final.ok, result=final, decision_log=log,
-                               reason="" if final.ok else final.error)
+        return PipelineOutcome(
+            allowed=final.ok, result=final, decision_log=log, reason="" if final.ok else final.error
+        )
 
-    async def _dispatch(self, executor: Callable[[dict], Any], tool_name: str, args: dict) -> ToolResult:
+    async def _dispatch(
+        self, executor: Callable[[dict], Any], tool_name: str, args: dict
+    ) -> ToolResult:
         attempts = self.retries + 1
         last_error = ""
         for attempt in range(attempts):
@@ -289,8 +300,9 @@ class ToolPipeline:
 
     def _deny(self, blocked_by: str, reason: str, log: list) -> PipelineOutcome:
         logger.info("pipeline denied blocked_by=%s reason=%s", blocked_by, reason)
-        return PipelineOutcome(allowed=False, result=None, reason=reason,
-                               decision_log=log, blocked_by=blocked_by)
+        return PipelineOutcome(
+            allowed=False, result=None, reason=reason, decision_log=log, blocked_by=blocked_by
+        )
 
 
 __all__ = [

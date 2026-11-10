@@ -1,5 +1,6 @@
 # Canonical kernel module lives here; agent_runtime imports via shim (#357).
 """Permission engine: layered rules + content scan + plan gate + mode policy."""
+
 from __future__ import annotations
 
 import json
@@ -403,9 +404,7 @@ class PermissionEngine:
                 # site cannot pause -> fail-closed, never silent auto-pass.
                 decision.decision = "deny"
                 decision.rule_source = "confirmation:always"
-                decision.reason = (
-                    "confirmation required (tier=always) but call site cannot pause; retry sequentially"
-                )
+                decision.reason = "confirmation required (tier=always) but call site cannot pause; retry sequentially"
                 decision.confirmation = "deny"
                 self._stats["denies"] += 1
                 return decision
@@ -501,7 +500,9 @@ class PermissionEngine:
                     continue
                 self._stats["rule_hits"] += 1
                 if rule.action == "deny":
-                    logger.info("rule deny tool=%s layer=%s pattern=%s", tool_name, layer, rule.tool)
+                    logger.info(
+                        "rule deny tool=%s layer=%s pattern=%s", tool_name, layer, rule.tool
+                    )
                     self._stats["denies"] += 1
                     return PermissionDecision(
                         "deny",
@@ -605,9 +606,7 @@ class PermissionEngine:
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
             rules = [
-                rule.to_dict()
-                for layer in _VALID_LAYERS
-                for rule in self._rules_by_layer[layer]
+                rule.to_dict() for layer in _VALID_LAYERS for rule in self._rules_by_layer[layer]
             ]
             payload = {
                 "rules": [r for r in rules if r["layer"] == "global"],

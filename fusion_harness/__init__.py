@@ -28,6 +28,14 @@ from fusion_harness.session_log import (
     SessionEventLog,
     SessionState,
 )
+from fusion_harness.provider import (
+    AdapterHost,
+    ProviderAdapter,
+    RuntimeNotReady,
+    SubprocessSessionRuntime,
+    SessionEvent as ProviderSessionEvent,
+    SessionState as ProviderSessionState,
+)
 from fusion_harness.outbox import (
     Effect,
     OutboxStore,
@@ -46,7 +54,7 @@ from fusion_harness.policies import (
     run_with_retry,
 )
 
-KERNEL_VERSION = "0.5.0"
+KERNEL_VERSION = "0.6.0"
 
 __all__ = [
     "KERNEL_VERSION",
@@ -70,6 +78,12 @@ __all__ = [
     "PermissionRule",
     "PipelineBlocked",
     "PipelineOutcome",
+    "ProviderAdapter",
+    "ProviderSessionEvent",
+    "ProviderSessionState",
+    "AdapterHost",
+    "SubprocessSessionRuntime",
+    "RuntimeNotReady",
     "ReceiptCache",
     "ReceiptReplayed",
     "ReconcileReport",

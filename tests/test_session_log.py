@@ -94,8 +94,17 @@ def test_schema_version_in_every_record(tmp_path):
 def test_load_rejects_newer_schema(tmp_path):
     target = tmp_path / "s2.jsonl"
     target.write_text(
-        json.dumps({"seq": 1, "ts": 0.0, "type": "session_start", "payload": {},
-                    "session_id": "s2", "schema_version": SCHEMA_VERSION + 1}) + "\n"
+        json.dumps(
+            {
+                "seq": 1,
+                "ts": 0.0,
+                "type": "session_start",
+                "payload": {},
+                "session_id": "s2",
+                "schema_version": SCHEMA_VERSION + 1,
+            }
+        )
+        + "\n"
     )
     with pytest.raises(LogSchemaError, match="schema_version"):
         SessionEventLog.load(target)
