@@ -29,9 +29,7 @@ def test_callback_hook_fires_and_aggregates():
     engine = HookEngine(auto_register_decorators=False)
     engine.register(
         _callback_hook(
-            fn=lambda p: HookResult(
-                decision="block", reason="blocked by test", continue_loop=False
-            )
+            fn=lambda p: HookResult(decision="block", reason="blocked by test", continue_loop=False)
         )
     )
     result = asyncio.run(engine.fire("POST_TOOL_USE", {"tool_name": "x"}))
@@ -42,9 +40,7 @@ def test_callback_hook_fires_and_aggregates():
 
 def test_block_decision_keeps_loop_flag_independent():
     engine = HookEngine(auto_register_decorators=False)
-    engine.register(
-        _callback_hook(fn=lambda p: HookResult(decision="block", reason="just a veto"))
-    )
+    engine.register(_callback_hook(fn=lambda p: HookResult(decision="block", reason="just a veto")))
     result = asyncio.run(engine.fire("POST_TOOL_USE", {"tool_name": "x"}))
     assert result.decision == "block"
     assert result.continue_loop  # aggregation copies the flag verbatim
@@ -95,9 +91,7 @@ def test_chain_budget_exceeded_blocks_fail_closed_event():
 def test_command_hook_blocked_without_env(monkeypatch):
     monkeypatch.delenv("FUSION_HOOKS_ALLOW_COMMAND", raising=False)
     engine = HookEngine(auto_register_decorators=False)
-    engine.register(
-        HookConfig(event="PRE_TOOL_USE", type="command", command=["echo", "hi"])
-    )
+    engine.register(HookConfig(event="PRE_TOOL_USE", type="command", command=["echo", "hi"]))
     result = asyncio.run(engine.fire("PRE_TOOL_USE", {"tool_name": "x"}))
     assert result.decision == "block"
     assert "disabled" in result.reason

@@ -1,6 +1,5 @@
 """Compactor unit coverage (issue #2 R3)."""
 
-
 from fusion_harness.compactor import CompactionConfig, Compactor, RetentionList
 
 
@@ -17,8 +16,9 @@ def _cfg(**over) -> CompactionConfig:
 
 
 def _msgs(n, size=100):
-    return [{"role": "user" if i % 2 == 0 else "assistant", "content": "x" * size}
-            for i in range(n)]
+    return [
+        {"role": "user" if i % 2 == 0 else "assistant", "content": "x" * size} for i in range(n)
+    ]
 
 
 def test_thresholds_derived_from_buffers():

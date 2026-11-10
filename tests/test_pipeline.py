@@ -24,7 +24,9 @@ def _engine_armed():
 
 
 def _deny_tool_guard():
-    return MonotonicGuard("no_risky", lambda tool, args: GUARD_DENY if tool == "risky_tool" else GUARD_ABSTAIN)
+    return MonotonicGuard(
+        "no_risky", lambda tool, args: GUARD_DENY if tool == "risky_tool" else GUARD_ABSTAIN
+    )
 
 
 @pytest.mark.asyncio

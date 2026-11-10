@@ -35,6 +35,7 @@ engine.add_rule(PermissionRule(action="deny", tool="shell"), layer="global")
 
 ```python
 from fusion_harness import ToolFunnel
+
 funnel = ToolFunnel(permissions=engine)
 ```
 
@@ -50,6 +51,7 @@ assert engine.is_armed(), "permission engine must be armed in production"
 
 ```python
 import asyncio
+
 res = asyncio.run(funnel.run_tool(None, "shell", {"command": "rm -rf /"}, exec))
 # 期望：('Blocked by permission: dangerous pattern matched: ...', True)
 ```

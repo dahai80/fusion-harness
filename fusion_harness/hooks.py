@@ -130,7 +130,7 @@ class HookEngine:
                 logger.info("auto-register %d decorator hooks", n)
 
     def flush_decorator_registry(self) -> int:
-        pending = _DECORATOR_REGISTRY[self._decorator_consumed:]
+        pending = _DECORATOR_REGISTRY[self._decorator_consumed :]
         for cfg in pending:
             self.register(cfg)
         self._decorator_consumed += len(pending)
@@ -202,9 +202,7 @@ class HookEngine:
             except Exception as e:
                 if event in FAIL_CLOSED_EVENTS:
                     # 审计 P-3: 安全门事件回调异常必须 block, 不能静默放行.
-                    logger.warning(
-                        "hook run error event=%s err=%s fail_closed=true", event, e
-                    )
+                    logger.warning("hook run error event=%s err=%s fail_closed=true", event, e)
                     return HookResult(
                         continue_loop=False,
                         decision="block",
@@ -273,9 +271,7 @@ class HookEngine:
         # (SESSION_*/STOP/...) 维持 fail-open approve, 因其非安全门.
         fail_closed = hook.event in FAIL_CLOSED_EVENTS
         try:
-            stdout, _ = await asyncio.wait_for(
-                proc.communicate(stdin_data), timeout=hook.timeout
-            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(stdin_data), timeout=hook.timeout)
         except TimeoutError:
             logger.warning(
                 "hook command timed out cmd=%s event=%s fail_closed=%s",

@@ -68,9 +68,7 @@ class LifecycleEvent:
         return {
             "seq": self.seq,
             "ts": self.ts,
-            "domain": self.domain
-            if isinstance(self.domain, str)
-            else self.domain.value,
+            "domain": self.domain if isinstance(self.domain, str) else self.domain.value,
             "event": self.event,
             "payload": self.payload,
             "session_id": self.session_id,
@@ -103,7 +101,13 @@ class LifecycleBus:
         except ValueError:
             pass
 
-    def emit(self, domain: EventDomain | str, event: str, payload: dict | None = None, session_id: str = "") -> LifecycleEvent:
+    def emit(
+        self,
+        domain: EventDomain | str,
+        event: str,
+        payload: dict | None = None,
+        session_id: str = "",
+    ) -> LifecycleEvent:
         with self._lock:
             self._seq += 1
             ev = LifecycleEvent(
@@ -125,7 +129,9 @@ class LifecycleBus:
                 logger.warning("lifecycle subscriber error: %s", e)
         return ev
 
-    def replay(self, session_id: str | None = None, domain: str | None = None, limit: int = 0) -> list[LifecycleEvent]:
+    def replay(
+        self, session_id: str | None = None, domain: str | None = None, limit: int = 0
+    ) -> list[LifecycleEvent]:
         with self._lock:
             if session_id:
                 events = list(self._events.get(session_id, deque()))
@@ -231,13 +237,17 @@ class ToolFunnel:
         def _mark(stage: str, verdict: str, reason: str = "") -> None:
             log.append({"stage": stage, "verdict": verdict, "reason": reason})
 
-        self._emit("capability", "tool_before", {"tool": tool_name, "args": args, "node": node_label}, ctx)
+        self._emit(
+            "capability", "tool_before", {"tool": tool_name, "args": args, "node": node_label}, ctx
+        )
 
         # Stage 1: hooks (PRE_TOOL_USE) — rewrite or block.
         hook_out = None
         if self.hooks is not None:
             try:
-                hook_out = await self.hooks.fire("PRE_TOOL_USE", {"tool_name": tool_name, "args": args}, tool_name=tool_name)
+                hook_out = await self.hooks.fire(
+                    "PRE_TOOL_USE", {"tool_name": tool_name, "args": args}, tool_name=tool_name
+                )
             except Exception as e:
                 logger.warning("funnel hook fire error tool=%s err=%s", tool_name, e)
                 hook_out = None
@@ -247,7 +257,11 @@ class ToolFunnel:
                     return self._deny(ctx, tool_name, args, "hook", log, hook_out.reason)
                 if getattr(hook_out, "updated_input", ""):
                     try:
-                        args = json.loads(hook_out.updated_input) if isinstance(hook_out.updated_input, str) else dict(hook_out.updated_input)
+                        args = (
+                            json.loads(hook_out.updated_input)
+                            if isinstance(hook_out.updated_input, str)
+                            else dict(hook_out.updated_input)
+                        )
                         _mark("hook", "rewrite", "updated_input applied")
                     except (TypeError, ValueError):
                         _mark("hook", "passthrough", "updated_input not JSON args, ignored")
@@ -275,8 +289,12 @@ class ToolFunnel:
                 tool_name,
             )
             return self._deny(
-                ctx, tool_name, args, "permission",
-                log, "permission engine absent (fail-closed)",
+                ctx,
+                tool_name,
+                args,
+                "permission",
+                log,
+                "permission engine absent (fail-closed)",
             )
         else:
             try:
@@ -289,7 +307,9 @@ class ToolFunnel:
                 )
             except Exception as e:
                 logger.warning("permission evaluate error tool=%s err=%s", tool_name, e)
-                perm_decision = PermissionDecision(decision="ask", rule_source="error_fallback", reason=f"permission error: {e}")
+                perm_decision = PermissionDecision(
+                    decision="ask", rule_source="error_fallback", reason=f"permission error: {e}"
+                )
             # #9: carry the engine's confirmation decision on every outcome.
             conf = None
             if getattr(perm_decision, "tier", ""):
@@ -350,9 +370,7 @@ class ToolFunnel:
         budget = None
         if self.budget_ref is not None:
             budget = self.budget_ref
-        if budget is not None and _budget_exceeded(
-            budget, getattr(ctx, "graph_id", "") or ""
-        ):
+        if budget is not None and _budget_exceeded(budget, getattr(ctx, "graph_id", "") or ""):
             _mark("budget", "deny", "token budget exceeded")
             return self._deny(ctx, tool_name, args, "budget", log, "token budget exceeded")
 
@@ -365,11 +383,13 @@ class ToolFunnel:
                 "confirmation": perm_decision.confirmation,
             }
         if perm_decision is not None:
-            out.decision_log.append({
-                "stage": "permission",
-                "verdict": "allow",
-                "rule_source": perm_decision.rule_source,
-            })
+            out.decision_log.append(
+                {
+                    "stage": "permission",
+                    "verdict": "allow",
+                    "rule_source": perm_decision.rule_source,
+                }
+            )
         return out
 
     def _readonly_names(self) -> set:
@@ -384,9 +404,18 @@ class ToolFunnel:
                 return set()
         return ro or set()
 
-    def _deny(self, ctx, tool_name: str, args: dict, gate: str, log: list, reason: str) -> FunnelOutcome:
-        out = FunnelOutcome(allowed=False, blocked_by=gate, reason=reason, args=args, decision_log=log)
-        self._emit("capability", "tool_deny", {"tool": tool_name, "gate": gate, "reason": reason, "args": args}, ctx)
+    def _deny(
+        self, ctx, tool_name: str, args: dict, gate: str, log: list, reason: str
+    ) -> FunnelOutcome:
+        out = FunnelOutcome(
+            allowed=False, blocked_by=gate, reason=reason, args=args, decision_log=log
+        )
+        self._emit(
+            "capability",
+            "tool_deny",
+            {"tool": tool_name, "gate": gate, "reason": reason, "args": args},
+            ctx,
+        )
         if self.audit_logger is not None:
             try:
                 self.audit_logger.log(
@@ -401,11 +430,15 @@ class ToolFunnel:
 
     def _emit(self, domain, event: str, payload: dict, ctx) -> None:
         try:
-            self.lifecycle.emit(domain, event, payload, session_id=getattr(ctx, "session_id", "") or "")
+            self.lifecycle.emit(
+                domain, event, payload, session_id=getattr(ctx, "session_id", "") or ""
+            )
         except Exception as e:
             logger.warning("lifecycle emit failed event=%s err=%s", event, e)
 
-    async def run_tool(self, ctx, tool_name: str, args: dict, executor, node_label: str = "") -> tuple[str, bool]:
+    async def run_tool(
+        self, ctx, tool_name: str, args: dict, executor, node_label: str = ""
+    ) -> tuple[str, bool]:
         """Admit then execute; returns (result_str, is_error).
 
         `executor` is a callable (tool, validated_args) -> awaitable str/ToolResult —
@@ -420,7 +453,12 @@ class ToolFunnel:
             )
         if not outcome.allowed:
             blocked = f"Blocked by {outcome.blocked_by}: {outcome.reason or 'denied'}"
-            logger.info("funnel blocked tool=%s gate=%s reason=%s", tool_name, outcome.blocked_by, outcome.reason)
+            logger.info(
+                "funnel blocked tool=%s gate=%s reason=%s",
+                tool_name,
+                outcome.blocked_by,
+                outcome.reason,
+            )
             return blocked, True
 
         try:
@@ -445,7 +483,12 @@ class ToolFunnel:
         self._emit(
             "capability",
             "tool_after",
-            {"tool": tool_name, "node": node_label, "is_error": is_error, "result_preview": (result or "")[:200]},
+            {
+                "tool": tool_name,
+                "node": node_label,
+                "is_error": is_error,
+                "result_preview": (result or "")[:200],
+            },
             ctx,
         )
 
@@ -479,26 +522,46 @@ class LLMFunnel:
     def set_budget_ref(self, budget_ref) -> None:
         self.budget_ref = budget_ref
 
-    async def pre_llm(self, ctx, node_label: str = "", model: str = "", messages: list | None = None) -> tuple[bool, str, list]:
+    async def pre_llm(
+        self, ctx, node_label: str = "", model: str = "", messages: list | None = None
+    ) -> tuple[bool, str, list]:
         """Gate the call. Returns (proceed, reason, possibly-compacted messages)."""
         messages = messages or []
-        self._emit("agent", "llm_before", {"node": node_label, "model": model, "messages": len(messages)}, ctx)
+        self._emit(
+            "agent",
+            "llm_before",
+            {"node": node_label, "model": model, "messages": len(messages)},
+            ctx,
+        )
         # N8: hard budget cap — exceed = graceful stop + BUDGET_EXCEED signal,
         # never silent truncation.
         budget = self.budget_ref
         graph_id = getattr(ctx, "graph_id", "") or ""
         if budget is not None and _budget_exceeded(budget, graph_id):
-            logger.warning("llm funnel budget exceeded node=%s spent=%s", node_label, getattr(budget, "spent_tokens", "?"))
-            self._emit("agent", "budget_exceed", {"node": node_label, "spent_tokens": getattr(budget, "spent_tokens", 0)}, ctx)
+            logger.warning(
+                "llm funnel budget exceeded node=%s spent=%s",
+                node_label,
+                getattr(budget, "spent_tokens", "?"),
+            )
+            self._emit(
+                "agent",
+                "budget_exceed",
+                {"node": node_label, "spent_tokens": getattr(budget, "spent_tokens", 0)},
+                ctx,
+            )
             if self.hooks is not None:
                 try:
-                    await self.hooks.fire("BUDGET_EXCEED", {"node": node_label, "stage": "pre_llm"}, tool_name="")
+                    await self.hooks.fire(
+                        "BUDGET_EXCEED", {"node": node_label, "stage": "pre_llm"}, tool_name=""
+                    )
                 except Exception as e:
                     logger.warning("budget_exceed hook error: %s", e)
             return False, "token budget exceeded", messages
         if self.hooks is not None:
             try:
-                out = await self.hooks.fire("LLM_BEFORE", {"node": node_label, "model": model}, tool_name="")
+                out = await self.hooks.fire(
+                    "LLM_BEFORE", {"node": node_label, "model": model}, tool_name=""
+                )
                 if out is not None and out.decision == "block":
                     return False, f"blocked by hook: {out.reason or 'llm_before'}", messages
             except Exception as e:
@@ -510,7 +573,9 @@ class LLMFunnel:
                 logger.warning("compactor.should_compact error: %s", e)
                 level = "none"
             if level != "none":
-                self._emit("agent", "compact_before", {"level": level, "messages": len(messages)}, ctx)
+                self._emit(
+                    "agent", "compact_before", {"level": level, "messages": len(messages)}, ctx
+                )
                 success = True
                 error = ""
                 try:
@@ -531,7 +596,14 @@ class LLMFunnel:
                 self._emit("agent", "compact_after", payload, ctx)
         return True, "", messages
 
-    def post_llm(self, ctx, node_label: str = "", model: str = "", usage: dict | None = None, content: str = "") -> None:
+    def post_llm(
+        self,
+        ctx,
+        node_label: str = "",
+        model: str = "",
+        usage: dict | None = None,
+        content: str = "",
+    ) -> None:
         self.calls += 1
         # N8 metering: feed per-call usage into the wired budget.
         budget = self.budget_ref
@@ -545,7 +617,9 @@ class LLMFunnel:
                 budget.record_usage(prompt_tokens, completion_tokens)
             except Exception as e:
                 logger.warning("budget record_usage failed: %s", e)
-        self._emit("agent", "llm_after", {"node": node_label, "model": model, "usage": usage or {}}, ctx)
+        self._emit(
+            "agent", "llm_after", {"node": node_label, "model": model, "usage": usage or {}}, ctx
+        )
         if self.hooks is not None:
             try:
                 import asyncio
@@ -553,16 +627,28 @@ class LLMFunnel:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
                     asyncio.ensure_future(
-                        self.hooks.fire("LLM_AFTER", {"node": node_label, "model": model, "usage": usage or {}}, tool_name="")
+                        self.hooks.fire(
+                            "LLM_AFTER",
+                            {"node": node_label, "model": model, "usage": usage or {}},
+                            tool_name="",
+                        )
                     )
                 else:
-                    loop.run_until_complete(self.hooks.fire("LLM_AFTER", {"node": node_label, "model": model, "usage": usage or {}}, tool_name=""))
+                    loop.run_until_complete(
+                        self.hooks.fire(
+                            "LLM_AFTER",
+                            {"node": node_label, "model": model, "usage": usage or {}},
+                            tool_name="",
+                        )
+                    )
             except Exception as e:
                 logger.warning("llm_after hook error: %s", e)
 
     def _emit(self, domain, event: str, payload: dict, ctx) -> None:
         try:
-            self.lifecycle.emit(domain, event, payload, session_id=getattr(ctx, "session_id", "") or "")
+            self.lifecycle.emit(
+                domain, event, payload, session_id=getattr(ctx, "session_id", "") or ""
+            )
         except Exception as e:
             logger.warning("lifecycle emit failed event=%s err=%s", event, e)
 

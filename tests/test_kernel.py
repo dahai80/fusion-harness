@@ -31,7 +31,13 @@ def test_permission_deny_first():
 
 
 def test_compactor_roundtrip():
-    cfg = CompactionConfig(context_window=200, warning_buffer=100, error_buffer=40, manual_buffer=150, keep_recent_rounds=1)
+    cfg = CompactionConfig(
+        context_window=200,
+        warning_buffer=100,
+        error_buffer=40,
+        manual_buffer=150,
+        keep_recent_rounds=1,
+    )
     compactor = Compactor(cfg)
     assert compactor is not None
 

@@ -184,7 +184,9 @@ def test_tier_risk_escalates_destructive_autopass():
     engine = _armed_engine(ConfirmationPolicy(tier="risk", risk_threshold=0.7))
     # readonly_hint auto-allow is an auto-passed path (not an explicit rule
     # allow), so a destructive payload must escalate to ask.
-    decision = engine.evaluate("other_tool", {"command": "TRUNCATE TABLE users"}, readonly_hint=True)
+    decision = engine.evaluate(
+        "other_tool", {"command": "TRUNCATE TABLE users"}, readonly_hint=True
+    )
     assert decision.decision == "ask"
     assert decision.confirmation == "confirm"
     assert decision.risk == 0.9
@@ -230,7 +232,9 @@ def test_tool_overrides_take_precedence():
 def test_bypass_mode_ignores_confirmation_policy():
     from fusion_harness.permissions import ConfirmationPolicy
 
-    engine = PermissionEngine(mode=PermissionMode.BYPASS, confirmation_policy=ConfirmationPolicy(tier="always"))
+    engine = PermissionEngine(
+        mode=PermissionMode.BYPASS, confirmation_policy=ConfirmationPolicy(tier="always")
+    )
     assert engine.evaluate("read_tool", {}).decision == "allow"
 
 

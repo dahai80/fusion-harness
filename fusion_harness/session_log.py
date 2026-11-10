@@ -7,6 +7,7 @@ unrelated class, and SessionEventLog.append_event() rejects anything that
 is not a SessionEvent with a TypeError — live hook events cannot reach the
 log by convention, oversight, or coercion.
 """
+
 from __future__ import annotations
 
 import json
@@ -102,7 +103,10 @@ def _state_reducer(state: SessionState, event: SessionEvent) -> None:
     if etype == "message":
         state.messages.append(dict(event.payload))
     elif etype == "tool_call":
-        record = {"call_id": event.payload.get("call_id", f"seq-{event.seq}"), "event": event.to_dict()}
+        record = {
+            "call_id": event.payload.get("call_id", f"seq-{event.seq}"),
+            "event": event.to_dict(),
+        }
         state.incomplete_tool_calls.append(record)
     elif etype in ("tool_result", "tool_error"):
         call_id = event.payload.get("call_id", "")
@@ -171,7 +175,9 @@ class SessionEventLog:
                 f"non-monotonic seq {event.seq}, expected {self._next_seq} — append-only violated"
             )
         if event.type not in _DURABLE_EVENT_TYPES:
-            logger.warning("durable log: unknown event type=%s (preserved, not reduced)", event.type)
+            logger.warning(
+                "durable log: unknown event type=%s (preserved, not reduced)", event.type
+            )
         self._events.append(event)
         self._next_seq += 1
         if self._path is not None:
@@ -185,7 +191,9 @@ class SessionEventLog:
             self._fh.flush()
             os.fsync(self._fh.fileno())
         except OSError as exc:
-            logger.error("session log persist failed session=%s seq=%s: %s", self.session_id, event.seq, exc)
+            logger.error(
+                "session log persist failed session=%s seq=%s: %s", self.session_id, event.seq, exc
+            )
 
     def close(self) -> None:
         if self._fh is not None:
