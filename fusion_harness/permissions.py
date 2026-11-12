@@ -599,6 +599,15 @@ class PermissionEngine:
     def rules_count(self) -> int:
         return sum(len(rules) for rules in self._rules_by_layer.values())
 
+    def rules_snapshot(self) -> list[PermissionRule]:
+        """Flat copy of all rules across layers — for deriving child engines
+        (subagent narrowing) without touching the parent's live state."""
+        out: list[PermissionRule] = []
+        for layer in ("global", "graph", "node"):
+            for rule in self._rules_by_layer.get(layer, []):
+                out.append(rule)
+        return out
+
     def save_to_file(self, path: Path | None = None) -> bool:
         # 审计 P-5: persist ALL three layers (global/graph/node) so layered
         # rules survive restarts. Each rule keeps its layer in its own dict.

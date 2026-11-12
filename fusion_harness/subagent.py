@@ -13,6 +13,7 @@ Only the summary event crosses back to the parent bus.
 """
 
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, List, Optional
@@ -68,15 +69,27 @@ class SubagentSession:
     allowed_tools: frozenset
     permission_mode: str
     budget_tokens: int
+    ledger: Any = None
     max_turns: int = 20
     turns: int = 0
     tokens_spent: int = 0
     _violations: List[str] = field(default_factory=list)
 
     def record_turn(self, tokens: int = 0) -> str:
-        """Advance one turn; returns 'ok', 'budget_exceeded', or 'max_turns'."""
+        """Advance one turn; returns 'ok', 'budget_exceeded', or 'max_turns'.
+        Token accounting goes through the TokenLedger (single ownership,
+        spec §3.4) when one is wired; the cap is enforced on the ledger
+        balance, never on a mutable drift-prone field."""
         self.turns += 1
-        self.tokens_spent += max(0, tokens)
+        tokens = max(0, tokens)
+        if self.ledger is not None and tokens:
+            self.ledger.append(scope=self.subagent_id, completion_tokens=tokens)
+            bal = self.ledger.balance(scope=self.subagent_id)
+            self.tokens_spent = int(bal.get("completion_tokens", 0)) + int(
+                bal.get("prompt_tokens", 0)
+            )
+        else:
+            self.tokens_spent += tokens
         if self.tokens_spent > self.budget_tokens:
             self._violations.append("budget_exceeded")
             return "budget_exceeded"
@@ -99,9 +112,11 @@ class SubagentRunner:
         self,
         bus: Optional[LifecycleBus] = None,
         clock: Any = time.time,
+        ledger_factory: Optional[Callable[[], Any]] = None,
     ) -> None:
         self.bus = bus
         self._clock = clock
+        self.ledger_factory = ledger_factory
         self._counter = 0
 
     def _emit(self, event: str, payload: Dict[str, Any]) -> None:
@@ -135,6 +150,30 @@ class SubagentRunner:
         )
         return parent
 
+    @staticmethod
+    def child_engine(parent_engine: Any, spec: SubagentSpec) -> Any:
+        """Child PermissionEngine: inherits every parent rule, tightens mode,
+        adds node-layer allow rules from the spec's allowlist. A child can
+        narrow, never widen — inherits parent snapshot verbatim."""
+        from fusion_harness.permissions import PermissionEngine, PermissionRule
+
+        rules = list(parent_engine.rules_snapshot()) if parent_engine is not None else []
+        for tool in spec.tool_allowlist:
+            pattern = tool if tool.endswith("*") else "^" + re.escape(tool) + "$"
+            rules.append(
+                PermissionRule(
+                    action="allow",
+                    tool=pattern,
+                    layer="node",
+                    description="derived from subagent spec %s" % spec.name,
+                )
+            )
+        raw_mode = getattr(parent_engine, "mode", "default")
+        parent_mode = getattr(raw_mode, "value", raw_mode)
+        return PermissionEngine(
+            rules=rules, mode=SubagentRunner.narrow_mode(str(parent_mode), spec)
+        )
+
     async def run(
         self,
         spec: SubagentSpec,
@@ -152,6 +191,7 @@ class SubagentRunner:
             allowed_tools=allowed,
             permission_mode=mode,
             budget_tokens=spec.budget_tokens,
+            ledger=self.ledger_factory() if self.ledger_factory else None,
             max_turns=spec.max_turns,
         )
         started = self._clock()
