@@ -8,9 +8,7 @@ import json
 import os
 import sys
 
-sys.path.insert(
-    0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bench")
-)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from bench.compaction_eval import check_regression, load_baseline, run_eval  # noqa: E402
 
