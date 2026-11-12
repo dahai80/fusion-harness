@@ -7,7 +7,7 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.7.0
+version: 0.8.0
 updated: 2026-11-12
 owner: "@dahai"
 source_of_truth:
@@ -15,6 +15,27 @@ source_of_truth:
 ---
 
 # Changelog
+
+## 0.8.0 (2026-11-12)
+
+### Phase 2 structural upgrade (evolution plan P2-1..P2-4)
+
+- `fusion_harness.checkpoint` (P2-2, G4): `CheckpointStore` (sqlite WAL +
+  `synchronous=FULL`) — durable `CheckpointState` (messages, budget, mode,
+  outbox offset), save/latest/load/list/prune; resume composes with outbox
+  receipt idempotency so committed tool effects never re-execute.
+- `fusion_harness.subagent` (P2-1, G3): `SubagentRunner` + `SubagentSpec` +
+  `SubagentSession` — one subagent primitive (not a fleet framework):
+  isolated child surface, tool allowlist intersected with parent surface,
+  permission mode can only tighten (bypass > approved > default > plan),
+  per-subagent budget/turn caps flag `capped`, summary-only return via
+  `SUBAGENT_*` lifecycle events.
+- `fusion_harness.skills` (P2-3, G2): SKILL.md-style `parse_skill` +
+  `SkillRegistry` + deterministic `derive_permissions()` (2611.08905) —
+  node-layer rules, deny-wins conflicts, unknown permission keys and
+  missing names rejected at load (fail-closed).
+- `bench/` (P2-4, G10): deterministic "future questions" compaction eval
+  (2610.27301) with `bench/baseline.json` regression gate wired into CI.
 
 ## 0.7.0 (2026-11-12)
 
