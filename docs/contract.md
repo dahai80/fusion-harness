@@ -133,3 +133,16 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 - An explicit rule allow is never escalated; an explicit deny is never downgraded. `bypass` mode ignores the policy.
 - `evaluate(can_confirm=False)` (non-interactive path) fail-closes an ask-tier outcome into a deny with a retry-sequentially reason.
 - The engine decision carries `tier`/`risk`/`confirmation`; `FunnelOutcome.confirmation` exposes it to consumers.
+
+## 13. Sandbox Execution Tiers (0.9.0, plan P3-3)
+
+- `SandboxPolicy.decide(tool, args, risk)` maps the permission engine's risk score/band to a tier: destructive band and score >= threshold route to `sandbox`, explicit `tool_tiers` may map any tool to `blocked`.
+- Fail-closed: `sandbox` tier with no runner wired is denied; `blocked` is denied. Routing happens inside `ToolFunnel.run_tool` between admission and execution — permission decisions themselves are unchanged.
+
+## 14. Cache Advisor (0.9.0, plan P3-1)
+
+- `CompactionConfig.cache_advisor` exposes `suggest_keep_rounds(messages) -> int`; the compactor takes `max(config.keep_recent_rounds, suggested)` — advice can only reduce compaction aggressiveness (protect prefix-cache stability), never increase it. Advisor failure logs a warning and uses config.
+
+## 15. Memory Binding (0.9.0, plan P3-2)
+
+- `MemorySink.store(key, payload, metadata)` / `MemorySource.retrieve(query, limit)`; `MemoryBridge.persist_compaction` and `recall`/`inject_context` (just-in-time, bounded, inserted after the system prefix). Sink/source failures are logged no-ops — memory is an upgrade, never a dependency.

@@ -13,6 +13,8 @@ from fusion_harness.tokens import (
     count_messages,
 )
 from fusion_harness.funnels import LifecycleBus, LLMFunnel, ToolFunnel
+from fusion_harness.memory_link import MemoryBridge, MemorySink, MemorySource
+from fusion_harness.sandbox import ExecutionTier, SandboxPolicy, SandboxRunner, map_risk_to_tier
 from fusion_harness.skills import Skill, SkillError, SkillRegistry, parse_skill
 from fusion_harness.subagent import SubagentResult, SubagentRunner, SubagentSession, SubagentSpec
 from fusion_harness.pipeline import (
@@ -63,7 +65,7 @@ from fusion_harness.policies import (
     run_with_retry,
 )
 
-KERNEL_VERSION = "0.8.0"
+KERNEL_VERSION = "0.9.0"
 
 __all__ = [
     "KERNEL_VERSION",
@@ -91,6 +93,13 @@ __all__ = [
     "HookEngine",
     "HookResult",
     "LLMFunnel",
+    "ExecutionTier",
+    "MemoryBridge",
+    "MemorySink",
+    "MemorySource",
+    "SandboxPolicy",
+    "SandboxRunner",
+    "map_risk_to_tier",
     "LifecycleBus",
     "LogSchemaError",
     "MonotonicGuard",

@@ -6,6 +6,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass, field
+from typing import Any
 
 from fusion_harness.tokens import HeuristicTokenCounter, TokenCounter, count_messages
 
@@ -85,6 +86,7 @@ class CompactionConfig:
     token_counter: TokenCounter | None = None
     clear_tool_results: bool = True
     pin_task_goal: bool = True
+    cache_advisor: Any = None
 
     def warning_threshold(self) -> int:
         return self.context_window - self.warning_buffer
@@ -233,7 +235,16 @@ class Compactor:
             if cleared:
                 logger.info("compaction phase=3b tool-result clearing cleared=%d", cleared)
         if self.estimate_tokens(msgs) >= self.config.warning_threshold():
-            msgs = self._smart_truncate(msgs, summarize)
+            keep = self.config.keep_recent_rounds
+            if self.config.cache_advisor is not None:
+                try:
+                    suggested = int(self.config.cache_advisor.suggest_keep_rounds(msgs))
+                    if suggested > keep:
+                        logger.info("cache advisor raises keep_rounds %d -> %d", keep, suggested)
+                        keep = suggested
+                except Exception as exc:
+                    logger.warning("cache advisor failed, using configured keep: %s", exc)
+            msgs = self._smart_truncate(msgs, summarize, keep=keep)
         if level == "error" and self.estimate_tokens(msgs) >= self.config.error_threshold():
             msgs = self._hard_compact(msgs, summarize)
         msgs = self._apply_survival_contract(messages, msgs)
@@ -435,10 +446,12 @@ class Compactor:
         logger.debug("truncate_tool dropped=%d", dropped)
         return {**m, "content": f"{head}\n...[truncated {dropped} chars]...\n{tail}"}
 
-    def _smart_truncate(self, messages: list[dict], summarize=None) -> list[dict]:
+    def _smart_truncate(
+        self, messages: list[dict], summarize=None, keep: int | None = None
+    ) -> list[dict]:
         system_msgs, rest = self._partition(messages)
         rounds = self._split_rounds(rest)
-        keep = self.config.keep_recent_rounds
+        keep = keep if keep is not None else self.config.keep_recent_rounds
         if len(rounds) <= keep:
             return messages
         dropped = rounds[: len(rounds) - keep]
