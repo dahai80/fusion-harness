@@ -59,6 +59,9 @@ Rules:
 - Pipeline (`compact(messages, level)`): fire `COMPACT_BEFORE` hooks + lifecycle → extract `RetentionList` (TODO lines, interface defs, constraints, pending tasks — kept verbatim) → microcompact (truncate oversized tool results, head+tail) → smart truncate (drop all but `keep_recent_rounds` rounds, summarize dropped) → hard compact at error level if still over → inject retention header.
 - Summarization: LLM via injected gateway (fusion-mlx, async path `compact_async`) with **deterministic fallback** (`[Compacted prior context]` + user intents/tools/conclusions extraction). Fallback is always available; the gateway is an upgrade, never a dependency.
 - System messages are never dropped. Retention list survives every level.
+- **Tool-result clearing (0.7.0)**: before summarization, tool results older than `keep_recent_rounds` collapse to identity stubs `[tool result cleared: id=... bytes=...]` (disable: `CompactionConfig(clear_tool_results=False)`). Recent-round results keep head+tail truncation only.
+- **Survival contract (0.7.0)**: every compaction path must (a) keep all pre-existing system messages verbatim — degradation is logged at ERROR and the message re-inserted; (b) keep the first user message reachable — if compacted away it is re-pinned as a `[Pinned task goal]` system segment (disable: `pin_task_goal=False`). `Compactor.survival_manifest(messages)` introspects pinned segments.
+- **Token counting (0.7.0)**: `CompactionConfig.token_counter` accepts any object with `count_text(str) -> int`; default `HeuristicTokenCounter` (chars/4, unchanged). `CJKAwareHeuristicTokenCounter` counts CJK runs at ~1 token/char. `count_messages(messages, counter)` is the shared list counter.
 
 ## 5. Environment Variables
 

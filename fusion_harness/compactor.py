@@ -7,9 +7,13 @@ import os
 import re
 from dataclasses import dataclass, field
 
+from fusion_harness.tokens import HeuristicTokenCounter, TokenCounter, count_messages
+
 logger = logging.getLogger(__name__)
 
 _RETENTION_HEADER = "[Retention List]"
+_PINNED_GOAL_HEADER = "[Pinned task goal]"
+_CLEARED_STUB_PREFIX = "[tool result cleared:"
 
 
 @dataclass
@@ -78,6 +82,9 @@ class CompactionConfig:
     tool_result_tail: int = 100
     tool_result_max_lines: int = 50
     retention_max_per_section: int = 20
+    token_counter: TokenCounter | None = None
+    clear_tool_results: bool = True
+    pin_task_goal: bool = True
 
     def warning_threshold(self) -> int:
         return self.context_window - self.warning_buffer
@@ -103,6 +110,7 @@ class Compactor:
         self.memory_engine = memory_engine
         self.lifecycle_bus = lifecycle_bus
         self.hooks = hooks
+        self._counter = self.config.token_counter or HeuristicTokenCounter()
 
     def _persist_summary(self, summary: str, original_count: int) -> None:
         if self.memory_engine is None or not summary:
@@ -116,16 +124,7 @@ class Compactor:
             logger.warning("failed to persist compaction summary: %s", exc)
 
     def estimate_tokens(self, messages: list[dict]) -> int:
-        total = 0
-        for m in messages:
-            content = m.get("content") or ""
-            if not isinstance(content, str):
-                content = str(content)
-            total += len(content)
-            for tc in m.get("tool_calls") or []:
-                fn = tc.get("function", {})
-                total += len(fn.get("name", "")) + len(fn.get("arguments", ""))
-        return max(1, total // 4)
+        return count_messages(messages, self._counter)
 
     def summarize_messages(self, messages: list[dict]) -> str:
         # N12: public summarizer for fork summary-resume (deterministic
@@ -229,10 +228,15 @@ class Compactor:
             )
         before_tokens = self.estimate_tokens(messages)
         msgs = self._microcompact(list(messages))
+        if self.config.clear_tool_results and level != "none":
+            cleared = self._clear_old_tool_results(msgs)
+            if cleared:
+                logger.info("compaction phase=3b tool-result clearing cleared=%d", cleared)
         if self.estimate_tokens(msgs) >= self.config.warning_threshold():
             msgs = self._smart_truncate(msgs, summarize)
         if level == "error" and self.estimate_tokens(msgs) >= self.config.error_threshold():
             msgs = self._hard_compact(msgs, summarize)
+        msgs = self._apply_survival_contract(messages, msgs)
         after_tokens = self.estimate_tokens(msgs)
         logger.info(
             "compaction phase=4 drop before_msgs=%d after_msgs=%d before_tok=%d after_tok=%d",
@@ -324,6 +328,99 @@ class Compactor:
                 m = self._truncate_tool(m)
             out.append(m)
         return out
+
+    def _clear_old_tool_results(self, messages: list[dict]) -> int:
+        """Safest-first compaction stage (plan P1-4): collapse tool results
+        in all but the most recent rounds to identity stubs, before any
+        summarization runs. Returns number of cleared results."""
+        _, rest = self._partition(messages)
+        rounds = self._split_rounds(rest)
+        keep = self.config.keep_recent_rounds
+        if len(rounds) <= keep:
+            return 0
+        cleared = 0
+        for r in rounds[: len(rounds) - keep]:
+            for i, m in enumerate(r):
+                if m.get("role") != "tool":
+                    continue
+                content = m.get("content") or ""
+                if not isinstance(content, str):
+                    content = str(content)
+                if content.startswith(_CLEARED_STUB_PREFIX):
+                    continue
+                call_id = str(m.get("tool_call_id") or "")
+                r[i] = {
+                    **m,
+                    "content": f"{_CLEARED_STUB_PREFIX} id={call_id} bytes={len(content)}]",
+                }
+                cleared += 1
+        if cleared:
+            system, _ = self._partition(messages)
+            messages[:] = system + [m for r in rounds for m in r]
+            logger.info("tool-result clearing cleared=%d", cleared)
+        return cleared
+
+    def _apply_survival_contract(self, before: list[dict], after: list[dict]) -> list[dict]:
+        """Survival contract (plan P1-3): pinned segments must survive any
+        compaction path. System messages survive verbatim (validated, loudly
+        re-inserted if degraded); the first user message is the task goal and
+        is re-pinned as a system segment if it was compacted away."""
+        before_system = [
+            m
+            for m in before
+            if m.get("role") == "system"
+            and not str(m.get("content") or "").startswith(_RETENTION_HEADER)
+            and _PINNED_GOAL_HEADER not in str(m.get("content") or "")
+        ]
+        after_contents = {str(m.get("content") or "") for m in after if m.get("role") == "system"}
+        for m in before_system:
+            content = str(m.get("content") or "")
+            if content and content not in after_contents:
+                logger.error(
+                    "survival contract violation: pinned system message degraded, re-inserting"
+                )
+                after.insert(0, dict(m))
+        if not self.config.pin_task_goal:
+            return after
+        goal = next(
+            (
+                str(m.get("content") or "")
+                for m in before
+                if m.get("role") == "user" and m.get("content")
+            ),
+            "",
+        )
+        if not goal:
+            return after
+        has_goal = any(goal in str(m.get("content") or "") for m in after)
+        if not has_goal:
+            stub = {"role": "system", "content": f"{_PINNED_GOAL_HEADER} {goal[:500]}"}
+            insert_at = 0
+            for i, m in enumerate(after):
+                if m.get("role") == "system":
+                    insert_at = i + 1
+                else:
+                    break
+            after = after[:insert_at] + [stub] + after[insert_at:]
+            logger.info("survival contract: task goal re-pinned at index=%d", insert_at)
+        return after
+
+    def survival_manifest(self, messages: list[dict]) -> dict:
+        """Report pinned segments for a session (contract introspection)."""
+        system = [m for m in messages if m.get("role") == "system"]
+        goal = next(
+            (
+                str(m.get("content") or "")[:120]
+                for m in messages
+                if m.get("role") == "user" and m.get("content")
+            ),
+            "",
+        )
+        return {
+            "pinned_system_messages": len(system),
+            "task_goal_present": bool(goal),
+            "task_goal_preview": goal,
+        }
 
     def _truncate_tool(self, m: dict) -> dict:
         content = m.get("content") or ""

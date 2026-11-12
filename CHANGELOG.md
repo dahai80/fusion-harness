@@ -7,14 +7,42 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.6.0
-updated: 2026-11-10
+version: 0.7.0
+updated: 2026-11-12
 owner: "@dahai"
 source_of_truth:
   - CHANGELOG.md
 ---
 
 # Changelog
+
+## 0.7.0 (2026-11-12)
+
+### Phase 1 convergence surface (evolution plan P1-1..P1-4)
+
+Gap-fill per `docs/evolution-plan-2026-11.md` — MCP transport, real token
+counting seam, compaction survival contract, tool-result clearing. Pure
+stdlib; additive; no behavior change without config.
+
+- `fusion_harness.tokens` (P1-2): `TokenCounter` protocol +
+  `HeuristicTokenCounter` (legacy chars/4, default) +
+  `CJKAwareHeuristicTokenCounter` (CJK ~= 1 token/char); `count_messages`
+  helper; `CompactionConfig.token_counter` injects a model-accurate
+  counter into the compactor.
+- Tool-result clearing (P1-4): deterministic compaction stage collapses
+  tool results older than `keep_recent_rounds` to identity stubs
+  (`[tool result cleared: id=... bytes=...]`) before any summarization —
+  Anthropic's safest-first principle.
+- Survival contract (P1-3): pinned segments survive every compaction path
+  — system messages validated verbatim post-compaction (degradation is
+  logged as error and re-inserted), task goal re-pinned as
+  `[Pinned task goal]` when compacted away; `Compactor.survival_manifest()`
+  introspection.
+- `fusion_harness.mcp` (P1-1): stdlib MCP stdio client
+  (`MCPStdioClient` initialize/tools-list/tools-call over JSON-RPC line
+  wire) + `MCPToolSource` exposing tools as `mcp__<server>__<tool>` for
+  the funnel's existing permission engine (deny-first unchanged; transport
+  carries no privilege).
 
 ## 0.6.0 (2026-11-10)
 
