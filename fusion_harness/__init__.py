@@ -4,6 +4,7 @@ Extracted from fusion-agent-studio N0 kernel (#357). Pure stdlib, no deps.
 Consumers: fusion-agent-studio (shim import), fusion-cowork, fusion-code.
 """
 
+from fusion_harness.checkpoint import CheckpointState, CheckpointStore
 from fusion_harness.compactor import CompactionConfig, Compactor
 from fusion_harness.tokens import (
     CJKAwareHeuristicTokenCounter,
@@ -12,6 +13,8 @@ from fusion_harness.tokens import (
     count_messages,
 )
 from fusion_harness.funnels import LifecycleBus, LLMFunnel, ToolFunnel
+from fusion_harness.skills import Skill, SkillError, SkillRegistry, parse_skill
+from fusion_harness.subagent import SubagentResult, SubagentRunner, SubagentSession, SubagentSpec
 from fusion_harness.pipeline import (
     MonotonicGuard,
     PipelineBlocked,
@@ -60,14 +63,24 @@ from fusion_harness.policies import (
     run_with_retry,
 )
 
-KERNEL_VERSION = "0.7.0"
+KERNEL_VERSION = "0.8.0"
 
 __all__ = [
     "KERNEL_VERSION",
     "CompactionConfig",
     "Compactor",
+    "CheckpointState",
+    "CheckpointStore",
     "ConfirmationPolicy",
     "CJKAwareHeuristicTokenCounter",
+    "Skill",
+    "SkillError",
+    "SkillRegistry",
+    "SubagentResult",
+    "SubagentRunner",
+    "SubagentSession",
+    "SubagentSpec",
+    "parse_skill",
     "HeuristicTokenCounter",
     "TokenCounter",
     "count_messages",

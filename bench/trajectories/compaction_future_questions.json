@@ -1,0 +1,25 @@
+{
+  "name": "compaction_future_questions",
+  "description": "Future-question compaction eval: facts needed after the compaction point must survive (survival contract, retention extraction, stub identity, recent rounds).",
+  "messages": [
+    {"role": "system", "content": "PERMISSION RULE: never read .env files. Constraint: keep API surface backward compatible."},
+    {"role": "user", "content": "Refactor the payment module without breaking the public API"},
+    {"role": "assistant", "content": "", "tool_calls": [{"function": {"name": "bash", "arguments": "{\"cmd\": \"pytest tests/ -x\"}"}}]},
+    {"role": "tool", "tool_call_id": "call-pay-001", "content": "FAILURES=3 test_payment_flow.py:44 assertion on settlement amount"},
+    {"role": "assistant", "content": "Settlement mismatch reproduced; inspecting ledger code next."},
+    {"role": "user", "content": "check the ledger rounding"},
+    {"role": "assistant", "content": "", "tool_calls": [{"function": {"name": "read_file", "arguments": "{\"path\": \"ledger/rounding.py\"}"}}]},
+    {"role": "tool", "tool_call_id": "call-pay-002", "content": "def round_cents(amount):\n    return int(amount * 100 + 0.5)  # TODO: banker rounding"},
+    {"role": "assistant", "content": "Found it: round_cents uses half-up; spec requires banker rounding."},
+    {"role": "user", "content": "fix it and re-run"},
+    {"role": "assistant", "content": "Patch ready for review."}
+  ],
+  "questions": [
+    {"id": "pinned_goal", "expect": "Refactor the payment module", "level": "error"},
+    {"id": "pinned_rule", "expect": "never read \\.env files", "level": "error"},
+    {"id": "retention_constraint", "expect": "keep API surface backward compatible|backward compatible", "level": "warning"},
+    {"id": "stub_identity", "expect": "tool result cleared:.*bytes=", "level": "warning"},
+    {"id": "recent_round", "expect": "Patch ready for review", "level": "warning"},
+    {"id": "todo_survives", "expect": "TODO: banker rounding|banker rounding", "level": "warning"}
+  ]
+}

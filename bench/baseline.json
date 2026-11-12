@@ -1,0 +1,7 @@
+{
+  "compaction_future_questions": {
+    "score": 1.0,
+    "tolerance": 0.0,
+    "method": "future-questions (2610.27301), deterministic"
+  }
+}

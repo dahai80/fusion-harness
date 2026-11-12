@@ -107,6 +107,26 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 
 ## 8. Confirmation Tiers (0.3.0, issue #9)
 
+## 9. Subagent Runtime (0.8.0, plan P2-1)
+
+- One primitive, not a fleet framework: `SubagentRunner.run(spec, agent_fn, parent_tools, parent_mode)` returns a `SubagentResult` — summary/status/turns/tokens only; child events surface as `SUBAGENT_START`/`SUBAGENT_END` on the lifecycle bus.
+- Child narrowing is monotonic: tool surface = parent ∩ spec allowlist; permission mode = stricter of parent and spec (strictness: bypass < approved < default < plan); budget/turn caps are additive. Violations flag status `capped`, never widen authority.
+- Agent execution is an injected async callable — the kernel owns isolation and accounting, not orchestration ladders.
+
+## 10. Resumable Checkpoints (0.8.0, plan P2-2)
+
+- `CheckpointStore` (sqlite, WAL, `synchronous=FULL`): `CheckpointState` = messages + budget + permission mode + outbox offset; `save/latest/load/list/prune`.
+- Resume contract: state rebuild reads a checkpoint; committed tool effects are never re-executed — the outbox receipt cache owns effect idempotency (checkpoint restore + redelivery is safe by construction).
+
+## 11. Skills + Permission Derivation (0.8.0, plan P2-3)
+
+- `parse_skill`: `---` frontmatter (name/description/permissions) + body; missing name, malformed or unknown permission clauses reject at load (fail-closed).
+- `derive_permissions(skill)`: deterministic, engine-shaped node-layer rules; deny clauses always win (strictest-wins); tool names map exact or trailing-`*` globs to anchored regexes.
+
+## 12. Evaluation Baseline (0.8.0, plan P2-4)
+
+- `bench/compaction_eval.py`: deterministic "future questions" compaction scoring (2610.27301) — no LLM in CI; `bench/baseline.json` records scores with tolerance; regression beyond tolerance fails the suite. Mechanisms without a benchmark delta here do not merge (minimalism gate).
+
 `ConfirmationPolicy(tier, risk_threshold, tool_overrides)` with tiers `always` / `never` / `risk` is evaluated **inside** `PermissionEngine` — one decision point, consumers must not stack local policy layers on top.
 
 - Deterministic risk bands (never LLM-judged): destructive 0.9 > network 0.6 > write 0.3 > readonly 0.0 (`score_tool_risk()`).
