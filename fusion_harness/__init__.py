@@ -5,6 +5,12 @@ Consumers: fusion-agent-studio (shim import), fusion-cowork, fusion-code.
 """
 
 from fusion_harness.compactor import CompactionConfig, Compactor
+from fusion_harness.tokens import (
+    CJKAwareHeuristicTokenCounter,
+    HeuristicTokenCounter,
+    TokenCounter,
+    count_messages,
+)
 from fusion_harness.funnels import LifecycleBus, LLMFunnel, ToolFunnel
 from fusion_harness.pipeline import (
     MonotonicGuard,
@@ -54,13 +60,17 @@ from fusion_harness.policies import (
     run_with_retry,
 )
 
-KERNEL_VERSION = "0.6.0"
+KERNEL_VERSION = "0.7.0"
 
 __all__ = [
     "KERNEL_VERSION",
     "CompactionConfig",
     "Compactor",
     "ConfirmationPolicy",
+    "CJKAwareHeuristicTokenCounter",
+    "HeuristicTokenCounter",
+    "TokenCounter",
+    "count_messages",
     "Deadline",
     "DeadlineExceeded",
     "Effect",
