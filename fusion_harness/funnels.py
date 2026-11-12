@@ -31,7 +31,9 @@ from typing import Any
 from fusion_harness.permissions import (
     PermissionDecision,
     PermissionEngine,
+    score_tool_risk,
 )
+from fusion_harness.sandbox import ExecutionTier, SandboxPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -205,6 +207,7 @@ class ToolFunnel:
         audit_logger=None,
         readonly_tools=None,
         safety_gateway=None,
+        sandbox_policy: SandboxPolicy | None = None,
     ):
         self.hooks = hooks
         self.permissions = permissions
@@ -215,6 +218,7 @@ class ToolFunnel:
         # a set (dynamic — registry can gain tools after funnel construction).
         self.readonly_tools = readonly_tools or set()
         self.safety_gateway = safety_gateway
+        self.sandbox_policy = sandbox_policy
         self._executions = 0
 
     def set_budget_ref(self, budget_ref) -> None:
@@ -462,7 +466,25 @@ class ToolFunnel:
             return blocked, True
 
         try:
-            result = await executor(outcome.args)
+            tier_decision = None
+            if self.sandbox_policy is not None:
+                risk = score_tool_risk(tool_name, outcome.args)
+                tier_decision = self.sandbox_policy.decide(tool_name, outcome.args, risk)
+                if tier_decision.tier is ExecutionTier.BLOCKED:
+                    logger.info(
+                        "funnel sandbox-blocked tool=%s reason=%s",
+                        tool_name,
+                        tier_decision.reason,
+                    )
+                    return (
+                        f"Error: sandbox policy blocked tool '{tool_name}': {tier_decision.reason}",
+                        True,
+                    )
+            if tier_decision is not None and tier_decision.tier is ExecutionTier.SANDBOX:
+                logger.info("funnel routes tool=%s via sandbox runner", tool_name)
+                result = await self.sandbox_policy.runner.run_sandboxed(tool_name, outcome.args)
+            else:
+                result = await executor(outcome.args)
         except Exception as e:
             result = f"Error: {e}"
         result_str = str(result)

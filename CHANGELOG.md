@@ -7,7 +7,7 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.8.0
+version: 0.9.0
 updated: 2026-11-12
 owner: "@dahai"
 source_of_truth:
@@ -15,6 +15,24 @@ source_of_truth:
 ---
 
 # Changelog
+
+## 0.9.0 (2026-11-12)
+
+### Phase 3 surpass bets (evolution plan P3-1..P3-3)
+
+- `fusion_harness.sandbox` (P3-3, G8): `ExecutionTier` (process/sandbox/
+  blocked) + `SandboxPolicy` — destructive-band tools route to a
+  consumer-provided runner; sandbox tier with no runner wired is denied
+  (fail-closed); `ToolFunnel(sandbox_policy=...)` routes between admission
+  and execution. Enforcement mechanism, not a second policy engine.
+- Cache advisor (P3-1, G7): `CompactionConfig.cache_advisor` — engine-side
+  advice on how many rounds to keep so compaction lands at stable prefix
+  boundaries; advisor can only raise the keep window, never shrink it;
+  advisor failures fall back to config.
+- `fusion_harness.memory_link` (P3-2, G9): `MemorySink`/`MemorySource`
+  protocols + `MemoryBridge` — compaction summaries persist to a sink,
+  recall is just-in-time injection (bounded, after system prefix), recall
+  failure is a no-op (memory is an upgrade, never a dependency).
 
 ## 0.8.0 (2026-11-12)
 
