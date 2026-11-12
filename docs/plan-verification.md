@@ -29,6 +29,7 @@ out of harness scope per the standing sweep constraint (harness only).
 | Criterion | Verified by | Status |
 |---|---|---|
 | scripted stdio server fixture: spawn, list, call | `test_phase1_convergence.py::TestMCPTransport::test_list_and_call_roundtrip` | PASS |
+| Streamable-HTTP transport (0.10.0 scope completion) | `test_mcp_http_and_orchestrator.py::TestMCPHttp` (session header, roundtrip, fail-loud) | PASS |
 | funnel namespacing `mcp__<server>__<tool>` | `::test_funnel_namespacing` | PASS |
 | deny-path: denied `tools/call` never reaches the server | `test_acceptance_verification.py::TestMCPDenyPath::test_deny_rule_blocks_mcp_tool_before_invoke` | PASS |
 | allow-path reaches client through funnel | `::TestMCPDenyPath::test_allow_path_reaches_mcp_client` | PASS |

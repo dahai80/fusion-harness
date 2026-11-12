@@ -156,3 +156,13 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 ## 15. Memory Binding (0.9.0, plan P3-2)
 
 - `MemorySink.store(key, payload, metadata)` / `MemorySource.retrieve(query, limit)`; `MemoryBridge.persist_compaction` and `recall`/`inject_context` (just-in-time, bounded, inserted after the system prefix). Sink/source failures are logged no-ops — memory is an upgrade, never a dependency.
+
+## 16. MCP Tool Transports (0.7.0 stdio, 0.10.0 HTTP)
+
+- `MCPStdioClient` (line-delimited JSON-RPC over a spawned server process) and `MCPStreamHttpClient` (Streamable-HTTP: JSON-RPC POST, JSON or SSE response, `Mcp-Session-Id` continuity) expose the same surface: `start() -> list_tools() -> call_tool() -> stop()`.
+- `MCPTool.funnel_name` is `mcp__<server>__<tool>`; `MCPToolSource` adapts one server's tools into the funnel registry. Permission rules match the namespaced names like any native tool — an MCP tool gains no new privilege surface, and a denied `tools/call` never reaches the server.
+
+## 17. Orchestration Primitives (0.10.0)
+
+- `BackgroundPool(runner).spawn(spec, agent_fn) -> Task` + `collect() -> [SubagentResult]`; `ParallelTeam(runner).run(specs, agent_fn) -> [SubagentResult]` fans out concurrently. Both are thin concurrency shapes over `SubagentRunner` — summary-only return, mode narrowing, and budget isolation are inherited, never re-implemented.
+- One member failing never cancels siblings; failures come back as `status="failed"` results. Workflow/DAG orchestration stays consumer-side (fusion-cowork owns the DAG engine); anything needing model judgment stays consumer-side.

@@ -7,7 +7,7 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.9.0
+version: 0.10.0
 updated: 2026-11-12
 owner: "@dahai"
 source_of_truth:
@@ -15,6 +15,31 @@ source_of_truth:
 ---
 
 # Changelog
+
+## 0.10.0 (2026-11-12)
+
+### MCP HTTP transport (P1-1 completion)
+
+- `fusion_harness.mcp.MCPStreamHttpClient`: Streamable-HTTP transport
+  (JSON-RPC POST, JSON or SSE response, `Mcp-Session-Id` continuity) —
+  same surface as the stdio client; pure stdlib (urllib off-thread).
+- `MCPToolSource` unchanged — both transports feed the funnel identically.
+
+### Orchestration primitives (kernel half of the ladder)
+
+- `fusion_harness.orchestrator`: `BackgroundPool` (spawn/collect) +
+  `ParallelTeam` (concurrent fan-out, sibling failures never cancel).
+  Thin concurrency shapes over `SubagentRunner` — summary-only return,
+  mode narrowing, budget isolation inherited. Workflow/DAG stays in
+  fusion-cowork (contract.md §17).
+- Exports: `BackgroundPool`, `ParallelTeam`.
+
+### Consumer requirements filed
+
+- agent-studio#675 (kernel wiring + sandbox runner + tokenizer),
+  cowork#470 (DAG checkpoint binding + workflow ladder),
+  mlx#1559 (CacheAdvisor + tokenizer + nightly bench),
+  memory#42 (MemorySink/Source adapters).
 
 ## 0.9.1 (2026-11-12)
 
