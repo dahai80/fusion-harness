@@ -16,6 +16,31 @@ source_of_truth:
 
 # Changelog
 
+## 0.9.1 (2026-11-12)
+
+### Acceptance verification (evolution plan audit)
+
+- `SubagentRunner(ledger_factory=...)`: per-subagent `TokenLedger` — token
+  accounting goes through the ledger balance (single ownership, spec §3.4),
+  caps enforced on recomputed balance, never a drift-prone field.
+- `SubagentRunner.child_engine(parent_engine, spec)`: child
+  `PermissionEngine` built from the parent's full rule snapshot + node-layer
+  allow rules derived from the spec allowlist; deny anywhere still wins
+  (deny returns on first match, ask outranks pending allow); child mode
+  narrows, never widens.
+- `PermissionEngine.rules_snapshot()`: flat rule list across global/graph/node
+  layers, for building child engines without widening.
+- New `tests/test_acceptance_verification.py` (14 tests): MCP deny-path
+  through `ToolFunnel` (denied `tools/call` never reaches the server),
+  compaction thresholds switching on counter identity, survival contract
+  across warning/error/manual + reactive strip + MLX-gateway path, subagent
+  ledger budget + child engine narrowing, SIGKILL-mid-session checkpoint
+  reopen, receipt-cache replay no-op.
+- `docs/plan-verification.md`: full acceptance-criteria -> test matrix for
+  evolution-plan-2026-11; kernel scope 100% covered, consumer-tracked items
+  listed explicitly.
+- `docs/contract.md` §13: risk band -> execution tier mapping table.
+
 ## 0.9.0 (2026-11-12)
 
 ### Phase 3 surpass bets (evolution plan P3-1..P3-3)

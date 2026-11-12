@@ -138,6 +138,16 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 
 - `SandboxPolicy.decide(tool, args, risk)` maps the permission engine's risk score/band to a tier: destructive band and score >= threshold route to `sandbox`, explicit `tool_tiers` may map any tool to `blocked`.
 - Fail-closed: `sandbox` tier with no runner wired is denied; `blocked` is denied. Routing happens inside `ToolFunnel.run_tool` between admission and execution — permission decisions themselves are unchanged.
+- Risk band -> default tier mapping (documented per P3-3 acceptance):
+
+| Input | Default tier |
+|---|---|
+| `tool_tiers[tool]` set | as mapped (process / sandbox / blocked) — wins first |
+| score >= `risk_threshold` (default 0.9, destructive band) | sandbox |
+| other known band (network / write / read) | process |
+| no band, score below threshold | process |
+
+  A sandbox decision with no wired runner degrades to `blocked` (fail-closed, never raw execution).
 
 ## 14. Cache Advisor (0.9.0, plan P3-1)
 
