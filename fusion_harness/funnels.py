@@ -208,6 +208,7 @@ class ToolFunnel:
         readonly_tools=None,
         safety_gateway=None,
         sandbox_policy: SandboxPolicy | None = None,
+        security_intel=None,
     ):
         self.hooks = hooks
         self.permissions = permissions
@@ -219,6 +220,9 @@ class ToolFunnel:
         self.readonly_tools = readonly_tools or set()
         self.safety_gateway = safety_gateway
         self.sandbox_policy = sandbox_policy
+        # Optional fusion-security intel client (issue #24): advisory hints,
+        # graceful no-op offline, decisions pushed back to the audit stream.
+        self.security_intel = security_intel
         self._executions = 0
 
     def set_budget_ref(self, budget_ref) -> None:
@@ -463,7 +467,34 @@ class ToolFunnel:
                 outcome.blocked_by,
                 outcome.reason,
             )
+            if self.security_intel is not None:
+                await self.security_intel.push_decision(tool_name, "deny", reason=blocked)
             return blocked, True
+
+        intel = None
+        if self.security_intel is not None:
+            intel = await self.security_intel.fetch_risk(tool_name, outcome.args)
+            if intel is not None:
+                self._emit(
+                    "capability",
+                    "security_intel",
+                    {
+                        "tool": tool_name,
+                        "score": intel.score,
+                        "risk_class": intel.risk_class,
+                        "hints": intel.policy_hints,
+                    },
+                    ctx,
+                )
+                if self.security_intel.enforce_hints and "deny" in intel.policy_hints:
+                    logger.warning(
+                        "intel hint deny enforced tool=%s hints=%s", tool_name, intel.policy_hints
+                    )
+                    if self.security_intel is not None:
+                        await self.security_intel.push_decision(
+                            tool_name, "deny", reason="intel hint deny enforced"
+                        )
+                    return f"Error: tool '{tool_name}' denied by security intel hint", True
 
         try:
             tier_decision = None
@@ -490,6 +521,8 @@ class ToolFunnel:
         result_str = str(result)
         is_error = result_str.startswith("Error:")
         self._executions += 1
+        if self.security_intel is not None:
+            await self.security_intel.push_decision(tool_name, "allow", reason=result_str[:200])
         await self.record_result(ctx, tool_name, args, result_str, is_error, node_label)
         return result_str, is_error
 

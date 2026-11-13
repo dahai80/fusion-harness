@@ -7,7 +7,7 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.10.0
+version: 0.10.1
 updated: 2026-11-12
 owner: "@dahai"
 source_of_truth:
@@ -15,6 +15,24 @@ source_of_truth:
 ---
 
 # Changelog
+
+## 0.10.1 (2026-11-13)
+
+### Security intel loop (issue #24, fusion-security contract v1)
+
+- `fusion_harness.security_intel.RiskIntelClient`: calls fusion-security
+  `POST /api/v1/agent/risk-score` (wire contract:
+  `schemas/agent-risk-score.v1.json`, fusion-security PR #89) and pushes
+  harness allow/deny decisions back to `/api/v1/agent/decisions` —
+  closed feedback loop into the security audit stream.
+- Opt-in `ToolFunnel(security_intel=...)`: unwired or unreachable endpoint
+  = exact previous behavior (logged no-op, offline-first). Hints advisory
+  by default (`security_intel` lifecycle event); `enforce_hints=True`
+  turns an intel deny hint into a funnel denial. Harness stays the
+  deny-first executor — permission decisions never overridden by intel.
+- Exports: `RiskIntel`, `RiskIntelClient`. contract.md §18.
+- 7 new tests (contract shape, advisory default, enforced deny, decision
+  push on deny paths, offline no-op, unwired no-change). Suite: 230.
 
 ## 0.10.0 (2026-11-12)
 

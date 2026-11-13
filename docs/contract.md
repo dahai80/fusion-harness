@@ -166,3 +166,9 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 
 - `BackgroundPool(runner).spawn(spec, agent_fn) -> Task` + `collect() -> [SubagentResult]`; `ParallelTeam(runner).run(specs, agent_fn) -> [SubagentResult]` fans out concurrently. Both are thin concurrency shapes over `SubagentRunner` — summary-only return, mode narrowing, and budget isolation are inherited, never re-implemented.
 - One member failing never cancels siblings; failures come back as `status="failed"` results. Workflow/DAG orchestration stays consumer-side (fusion-cowork owns the DAG engine); anything needing model judgment stays consumer-side.
+
+## 18. Security Intel Loop (0.10.1, issue #24)
+
+- `RiskIntelClient(base_url, ...)` calls fusion-security `POST /api/v1/agent/risk-score` (wire contract: `schemas/agent-risk-score.v1.json` in fusion-security) and pushes the harness's own allow/deny back to `POST /api/v1/agent/decisions` (closed feedback loop).
+- Opt-in: `ToolFunnel(security_intel=...)`. Unwired or unreachable endpoint = exact previous behavior (logged no-op — intel is an upgrade, never a dependency; harness keeps working offline).
+- Hints are **advisory by default** — recorded in the `security_intel` lifecycle event only. `enforce_hints=True` turns an intel `deny` hint into a funnel denial. Harness remains the deny-first executor in all cases; the permission engine's decision is never overridden by intel.
