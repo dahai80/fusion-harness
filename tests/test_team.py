@@ -259,7 +259,14 @@ class TestPersistence:
 class TestZeroModelCalls:
     def test_no_model_call_tokens_in_source(self):
         repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        for fname in ("team.py", "team_runtime.py"):
+        for fname in (
+            "team.py",
+            "team_runtime.py",
+            "scoped_permissions.py",
+            "dag_node.py",
+            "checkpoint_binding.py",
+            "trajectory.py",
+        ):
             src = open(os.path.join(repo, "fusion_harness", fname)).read()
             for banned in ("llm_gateway", "MLXClient", "mlx_client", ".chat(", "compactor"):
                 assert banned not in src, "%s references %s" % (fname, banned)

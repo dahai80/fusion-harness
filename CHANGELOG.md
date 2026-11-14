@@ -7,7 +7,7 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.12.1
+version: 0.13.0
 updated: 2026-11-14
 owner: "@dahai"
 source_of_truth:
@@ -15,6 +15,34 @@ source_of_truth:
 ---
 
 # Changelog
+
+## 0.13.0 (2026-11-14)
+
+### Kernel convergence K1-K3 (issues #34 #35 #36, roadmap kernel-abstract-roadmap-2026-11-14)
+
+- `fusion_harness.scoped_permissions` (#34, K1): scoped permission engine
+  ported from cowork's 5-level permission_manager — deny-rules-first,
+  file:/command:/url: scope prefixes (kernel adds path-boundary check and
+  subject/expires_at/multi-scope), high-risk guard delegation
+  (register_guard, engine owns no guard logic, fail-closed deny + queue),
+  durable approval queue over CheckpointStore. Existing
+  fusion_harness.permissions API untouched.
+- `fusion_harness.dag_node` (#35, K2): BaseNode / NodeRegistry (duplicate
+  rejection) / NodeContext / strict param coercion — kernel raises
+  ParamCoercionError naming field+expected+received where cowork silently
+  passes values through (intentional, recorded in parity table).
+- `fusion_harness.checkpoint_binding` (#35, K2): canonical
+  bind_node_state(store, outbox, run_id) — per-node CheckpointStore state +
+  OutboxStore receipt idempotency (mark_emitted runs once; crash-recovery
+  replay never re-executes committed effects).
+- `fusion_harness.artifact_channel.ArtifactTools` (#36, K3): capture/read/
+  list/diff over an existing ArtifactStore; refs-only interchange preserved.
+- `fusion_harness.trajectory` (#36, K3): one normative JSONL record schema
+  (DAG node_id and team member union; model_call_meta carries model name +
+  token counts only — prompt/completion content rejected at construction);
+  reader normalizes legacy cowork and studio shapes for gradual migration.
+- Zero-model CI check extended to all new modules. 78 new tests; suite 347.
+  contract.md §24-§26.
 
 ## 0.12.1 (2026-11-14)
 
