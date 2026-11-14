@@ -193,13 +193,20 @@ class TeamRuntime:
     # ---------- member execution ----------
 
     async def run_member(
-        self, member: TeamMember, task_id: str, brief: SpawnBrief, agent_fn
+        self, member: TeamMember, task_id: str, brief: SpawnBrief, agent_fn, depth: int = 1
     ) -> SubagentResult:
         """Enforce the brief contract, stack member constraints (can only
         tighten), run through SubagentRunner; the result summary lands on
-        the task board, never directly on the parent."""
+        the task board, never directly on the parent. `depth` is the
+        caller's global orchestration depth; team-internal max_depth stacks
+        on top and the combined total must stay <= 3."""
         self._require_active()
         full_brief = brief if isinstance(brief, SpawnBrief) else brief_from_event(brief)
+        if depth < 1 or depth + self.definition.max_depth > 3:
+            raise TeamStateError(
+                "orchestration depth overflow: caller depth %d + team max_depth %d exceeds 3"
+                % (depth, self.definition.max_depth)
+            )
         budget = min(member.budget_tokens, full_brief.token_budget)
         spec = SubagentSpec(
             name=member.name,

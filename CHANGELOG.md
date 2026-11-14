@@ -7,14 +7,24 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.12.0
-updated: 2026-11-12
+version: 0.12.1
+updated: 2026-11-14
 owner: "@dahai"
 source_of_truth:
   - CHANGELOG.md
 ---
 
 # Changelog
+
+## 0.12.1 (2026-11-14)
+
+### Depth enforcement in run_member (audit follow-up to #31)
+
+- `TeamRuntime.run_member` now takes `depth` (caller's global orchestration
+  depth, default 1) and raises typed `TeamStateError` when
+  `depth + TeamDefinition.max_depth` exceeds 3 — max_depth was validated
+  at definition time but not enforced at spawn time; closes the hole T3
+  member-internal re-spawn would hit. 22 team tests (suite 269).
 
 ## 0.12.0 (2026-11-14)
 
