@@ -31,6 +31,36 @@ from fusion_harness.spawn_protocol import (
     validate_brief,
 )
 from fusion_harness.team import TeamDefError, TeamDefinition, TeamMember
+from fusion_harness.scoped_permissions import (
+    DECISIONS as SCOPED_DECISIONS,
+    HIGH_RISK_NODES,
+    PermissionLevel,
+    ScopedPermission,
+    ScopedPermissionEngine,
+    ScopedPermissionError,
+)
+from fusion_harness.dag_node import (
+    BaseNode,
+    NodeContext,
+    NodeRegistry,
+    NodeRegistryError,
+    NodeResult,
+    ParamCoercionError,
+    coerce_params,
+    default_registry,
+    register,
+    run_node,
+)
+from fusion_harness.checkpoint_binding import NodeStateBinder, bind_node_state
+from fusion_harness.artifact_channel import ArtifactTools
+from fusion_harness.trajectory import (
+    EVENTS as TRAJECTORY_EVENTS,
+    TrajectoryReader,
+    TrajectoryRecord,
+    TrajectorySchemaError,
+    TrajectoryWriter,
+    normalize_record,
+)
 from fusion_harness.team_runtime import (
     MSG_TYPES,
     TeamMessage,
@@ -91,7 +121,7 @@ from fusion_harness.policies import (
     run_with_retry,
 )
 
-KERNEL_VERSION = "0.12.1"
+KERNEL_VERSION = "0.13.0"
 
 __all__ = [
     "KERNEL_VERSION",
@@ -151,6 +181,31 @@ __all__ = [
     "TeamStateError",
     "TeamMessageError",
     "MSG_TYPES",
+    "BaseNode",
+    "NodeContext",
+    "NodeRegistry",
+    "NodeRegistryError",
+    "NodeResult",
+    "ParamCoercionError",
+    "coerce_params",
+    "default_registry",
+    "register",
+    "run_node",
+    "NodeStateBinder",
+    "bind_node_state",
+    "ArtifactTools",
+    "TRAJECTORY_EVENTS",
+    "TrajectoryReader",
+    "TrajectoryRecord",
+    "TrajectorySchemaError",
+    "TrajectoryWriter",
+    "normalize_record",
+    "HIGH_RISK_NODES",
+    "PermissionLevel",
+    "ScopedPermission",
+    "ScopedPermissionEngine",
+    "ScopedPermissionError",
+    "SCOPED_DECISIONS",
     "SandboxRunner",
     "map_risk_to_tier",
     "LifecycleBus",

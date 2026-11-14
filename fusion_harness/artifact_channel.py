@@ -111,4 +111,66 @@ class SummaryInjector:
         return out[:insert_at] + [segment] + out[insert_at:]
 
 
-__all__ = ["ArtifactStore", "SummaryInjector", "WorkerDelivery", "default_summarize"]
+class ArtifactTools:
+    """Tool surface over an existing ArtifactStore (issue #36, K3): capture /
+    read / list / diff. Refs stay the ONLY interchange unit — full text never
+    crosses process boundaries. Additive; ArtifactStore signatures unchanged."""
+
+    def __init__(self, store: ArtifactStore) -> None:
+        self.store = store
+
+    def capture(
+        self,
+        name: str,
+        content: str,
+        kind: str = "text",
+        tags: Optional[List[str]] = None,
+        run_id: str = "shared",
+    ) -> str:
+        tags = tags or []
+        ref = self.store.write_artifact(run_id, name, content, kind)
+        if tags:
+            tag_path = self.store.artifact_path("%s/%s.tags" % (ref.split("/")[0], name))
+            with open(tag_path, "w", encoding="utf-8") as fh:
+                fh.write(",".join(tags))
+        logger.info("artifact captured name=%s kind=%s tags=%d", name, kind, len(tags))
+        return ref
+
+    def read(self, ref: str) -> str:
+        path = self.store.artifact_path(ref)
+        if not os.path.exists(path):
+            raise FileNotFoundError("no artifact for ref: %s" % ref)
+        with open(path, "r", encoding="utf-8") as fh:
+            return fh.read()
+
+    def list(self, prefix: str = "") -> List[str]:
+        refs: List[str] = []
+        for dirpath, _dirnames, filenames in os.walk(self.store.root_dir):
+            for fname in filenames:
+                if fname.endswith(".tags"):
+                    continue
+                rel = os.path.relpath(os.path.join(dirpath, fname), self.store.root_dir)
+                rel = rel.replace(os.sep, "/")
+                if not prefix or rel.startswith(prefix):
+                    refs.append(rel)
+        return sorted(refs)
+
+    def diff(self, ref_a: str, ref_b: str) -> str:
+        import difflib
+
+        text_a = self.read(ref_a)
+        text_b = self.read(ref_b)
+        return "\n".join(
+            difflib.unified_diff(
+                text_a.splitlines(), text_b.splitlines(), fromfile=ref_a, tofile=ref_b, lineterm=""
+            )
+        )
+
+
+__all__ = [
+    "ArtifactStore",
+    "SummaryInjector",
+    "WorkerDelivery",
+    "default_summarize",
+    "ArtifactTools",
+]

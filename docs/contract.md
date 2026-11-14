@@ -201,3 +201,23 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 - Mailbox: `send`/`broadcast` persist per-member JSON inboxes; a message counts as delivered only when the file write succeeds (atomic tmp + rename); msg.type enum (text | plan_approval | shutdown_request | shutdown_response) is validated, semantics are not; inbox content is never auto-injected into anyone's context — injection timing is the consumer's call.
 - `run_member` enforces orchestration depth: caller depth + team max_depth must stay <= 3 (typed error; closes the T3 re-spawn hole).
 - `save_state`/`load_state` round-trip board + inboxes + lifecycle; `disband` cleans up inboxes per policy. **Zero model calls in any TeamRuntime API** (CI-greppable test).
+
+## 24. Scoped Permission Engine (0.13.0, issue #34, K1)
+
+- `ScopedPermission(subject, level, scopes, allowed, expires_at)`: `PermissionLevel` reuses the cowork 5-level names (CONFIRM/MANUAL/AUTO/PLAN/BYPASS — labels; only CONFIRM default and BYPASS short-circuit change behavior). Scopes: `file:` (path-boundary checked — kernel does NOT copy upstream's `file:/a` matches `/ab` raw-prefix quirk), `command:` raw prefix, `url:` slash-boundary prefix, plain string = resource prefix, `*` matches all. `expires_at` is kernel-new (upstream has none).
+- `ScopedPermissionEngine.check(action, resource) -> "allow"|"deny"|"ask"`, deny-rules-first: explicit deny (any level) beats BYPASS and allow; then BYPASS; then allow rules (any level); then high-risk guard delegation; low-risk default allow. Guard: `register_guard(node_class|"*", fn)` — engine owns no guard logic; no guard / guard error / guard deny = fail-closed `deny` + queued approval.
+- Approval queue `pending()/resolve(id, approve)/list_pending()` persists through `CheckpointStore` (session "scoped-permissions") — survives process restarts. Resolve appends a scope-limited allow/deny rule.
+- Upstream audit-hook + HITL gate-tool exemptions stay consumer-side (cowork wiring, not kernel mechanism).
+
+## 25. DAG Node Mechanics + Checkpoint Binding (0.13.0, issue #35, K2)
+
+- `dag_node.BaseNode`: declarative `node_type` + `validate(params) -> errors` + `execute(ctx, params)` (sync or async body; `run_node` awaits awaitables, converts exceptions to `NodeResult(status="failed")`). `NodeContext` carries run_id/node_id/logger/artifact ref writer (delegates to `ArtifactStore`)/checkpoint hook — kernel-new abstraction (upstream passes a plain dict).
+- `NodeRegistry`: register/get/list/create with duplicate-type rejection (kernel raises `NodeRegistryError`; upstream logs-and-skips — silent drift not allowed in the kernel); decorator `@register("type")` on the module-level `default_registry`.
+- `coerce_params(params, schema)`: strict coercion against JSON-schema-shaped declarations (string/integer/number/boolean/array/object/enum). Kernel INTENTIONALLY DIFFERS from cowork's never-fail coercion: non-coercible input raises `ParamCoercionError` listing every field + expected + received — silent type drift is a mechanism-level bug here.
+- `checkpoint_binding.bind_node_state(store, outbox, run_id) -> NodeStateBinder`: per-node state in `CheckpointStore` (session `run:node`), side-effect idempotency via `OutboxStore` receipt cache — `mark_emitted(node_id, event, executor)` runs the executor at most once per (run, node, event); crash-recovery replay restores state and replays without re-execution. This is the canonical wiring; cowork `kernel_checkpoint.py` and studio `_runtime_checkpoint.py` migrate to it (receipt aggregate "harness.node").
+
+## 26. Artifact Tools + Unified Trajectory (0.13.0, issue #36, K3)
+
+- `ArtifactTools(store)`: `capture/read/list/diff` over an existing `ArtifactStore`; refs stay the only interchange unit (full text never crosses process boundaries). Kernel raises on missing refs (upstream studio returns error-dicts — fail-visible here); `diff` is kernel-new semantics (unified diff between two refs).
+- `trajectory.TrajectoryRecord`: normative JSONL schema — `run_id`, `node_id`/`member` (union: DAG and team runs), `ts` (ms), `event` in `start|tool_call|tool_result|model_call_meta|error|end`, `payload`, `duration_ms`, `status`. Privacy rule enforced at construction: `model_call_meta` payload carrying prompt/completion/messages/content/text keys is rejected — token counts and model NAME only.
+- `TrajectoryWriter` appends normative lines only; `TrajectoryReader` accepts legacy shapes via deterministic adapters: cowork recorder lines (top-level `ts` + `execution_id`, events mapped, original kept as `payload.legacy_event`) and studio per-run records (top-level `events` list, flattened to per-event records, `token_usage` attached as `run_token_usage`). Unknown shapes rejected loudly.
