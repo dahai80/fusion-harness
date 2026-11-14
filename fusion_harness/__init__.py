@@ -15,6 +15,21 @@ from fusion_harness.tokens import (
 from fusion_harness.funnels import LifecycleBus, LLMFunnel, ToolFunnel
 from fusion_harness.memory_link import MemoryBridge, MemorySink, MemorySource
 from fusion_harness.orchestrator import BackgroundPool, ParallelTeam
+from fusion_harness.artifact_channel import ArtifactStore, SummaryInjector, WorkerDelivery
+from fusion_harness.cache_discipline import (
+    ToolAvailabilityState,
+    assert_stable_prefix,
+    check_append_only,
+    mask_tools,
+)
+from fusion_harness.playbook import Playbook, PlaybookOp
+from fusion_harness.spawn_protocol import (
+    EffortTierConfig,
+    SpawnBrief,
+    SpawnBriefError,
+    brief_from_event,
+    validate_brief,
+)
 from fusion_harness.sandbox import ExecutionTier, SandboxPolicy, SandboxRunner, map_risk_to_tier
 from fusion_harness.security_intel import RiskIntel, RiskIntelClient
 from fusion_harness.skills import Skill, SkillError, SkillRegistry, parse_skill
@@ -67,7 +82,7 @@ from fusion_harness.policies import (
     run_with_retry,
 )
 
-KERNEL_VERSION = "0.10.1"
+KERNEL_VERSION = "0.11.0"
 
 __all__ = [
     "KERNEL_VERSION",
@@ -104,6 +119,20 @@ __all__ = [
     "SandboxPolicy",
     "RiskIntel",
     "RiskIntelClient",
+    "SpawnBrief",
+    "SpawnBriefError",
+    "EffortTierConfig",
+    "validate_brief",
+    "brief_from_event",
+    "ArtifactStore",
+    "SummaryInjector",
+    "WorkerDelivery",
+    "Playbook",
+    "PlaybookOp",
+    "assert_stable_prefix",
+    "check_append_only",
+    "mask_tools",
+    "ToolAvailabilityState",
     "SandboxRunner",
     "map_risk_to_tier",
     "LifecycleBus",
