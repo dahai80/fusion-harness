@@ -30,6 +30,15 @@ from fusion_harness.spawn_protocol import (
     brief_from_event,
     validate_brief,
 )
+from fusion_harness.team import TeamDefError, TeamDefinition, TeamMember
+from fusion_harness.team_runtime import (
+    MSG_TYPES,
+    TeamMessage,
+    TeamMessageError,
+    TeamRuntime,
+    TeamStateError,
+    TeamTask,
+)
 from fusion_harness.sandbox import ExecutionTier, SandboxPolicy, SandboxRunner, map_risk_to_tier
 from fusion_harness.security_intel import RiskIntel, RiskIntelClient
 from fusion_harness.skills import Skill, SkillError, SkillRegistry, parse_skill
@@ -82,7 +91,7 @@ from fusion_harness.policies import (
     run_with_retry,
 )
 
-KERNEL_VERSION = "0.11.0"
+KERNEL_VERSION = "0.12.0"
 
 __all__ = [
     "KERNEL_VERSION",
@@ -133,6 +142,15 @@ __all__ = [
     "check_append_only",
     "mask_tools",
     "ToolAvailabilityState",
+    "TeamMember",
+    "TeamDefinition",
+    "TeamDefError",
+    "TeamRuntime",
+    "TeamTask",
+    "TeamMessage",
+    "TeamStateError",
+    "TeamMessageError",
+    "MSG_TYPES",
     "SandboxRunner",
     "map_risk_to_tier",
     "LifecycleBus",

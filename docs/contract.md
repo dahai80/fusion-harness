@@ -192,3 +192,11 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 - `assert_stable_prefix(turn_prompts)` flags turns whose prompt does not extend turn 0 byte-identically (lint-style CI hook).
 - `check_append_only(before, after, compaction=False)`: context mutation must be append-only; rewrites only at explicit compaction boundaries.
 - `mask_tools` / `ToolAvailabilityState`: mid-task tool availability changes are masking flags (`x-fusion-masked`) on an unchanged, same-order schema list — never add/remove (Manus 2025-07-18: dynamic tool-list mutation invalidates the KV prefix and induces schema violations).
+
+## 23. Team Entity (0.12.0, issue #31, T1)
+
+- `TeamDefinition` (name, namespace_key memory anchor with fixed tier "team", 1..N `TeamMember`, playbook flag, max_depth 1..3) validates pure and fails visibly via typed `TeamDefError`: duplicate member names, empty namespace_key, depth overflow, member budget exceeding lead budget (Deadline.child semantics). `TeamMember` names match `[A-Za-z0-9_-]+`.
+- `TeamRuntime` lifecycle state machine: DEFINED -> ACTIVE to PAUSED and back -> DISBANDED (typed `TeamStateError` on illegal transitions; `pause()`/`resume()` first-class). All events flow on the LifecycleBus as `team.task.*` / `team.member.*` / `team.msg.*` / `team.lifecycle`.
+- Task board: `TeamTask` status transitions are whitelisted (todo -> in_progress -> done; blocked requires non-empty blocked_by); `claim_task` is compare-and-set atomic — exactly one concurrent claimant wins. `run_member` enforces the SpawnBrief contract, stacks member constraints (tool intersection, stricter permission mode only, budget = min(member, brief)), and lands result summaries on the task board, never directly on the parent. One member failing never cancels siblings.
+- Mailbox: `send`/`broadcast` persist per-member JSON inboxes; a message counts as delivered only when the file write succeeds (atomic tmp + rename); msg.type enum (text | plan_approval | shutdown_request | shutdown_response) is validated, semantics are not; inbox content is never auto-injected into anyone's context — injection timing is the consumer's call.
+- `save_state`/`load_state` round-trip board + inboxes + lifecycle; `disband` cleans up inboxes per policy. **Zero model calls in any TeamRuntime API** (CI-greppable test).
