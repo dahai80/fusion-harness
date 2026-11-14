@@ -7,7 +7,7 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.11.0
+version: 0.12.0
 updated: 2026-11-12
 owner: "@dahai"
 source_of_truth:
@@ -15,6 +15,24 @@ source_of_truth:
 ---
 
 # Changelog
+
+## 0.12.0 (2026-11-14)
+
+### Team entity (issue #31, T1)
+
+- `fusion_harness.team`: `TeamMember` + `TeamDefinition` + typed
+  `TeamDefError` (duplicate names, empty namespace_key, depth overflow,
+  member budget over lead budget). Pure validators, fail-visible.
+- `fusion_harness.team_runtime`: `TeamRuntime` — lifecycle state machine
+  (DEFINED -> ACTIVE to PAUSED and back -> DISBANDED, typed errors), task board
+  (whitelisted transitions, blocked requires blocked_by, CAS-atomic
+  claims), `run_member` (SpawnBrief enforcement + constraint stacking
+  that can only tighten + summary lands on the board), JSON mailbox
+  (delivered only on successful file write, type enum validated,
+  broadcast one-per-member, never auto-injected), `save_state`/
+  `load_state` round-trip. All events on LifecycleBus.
+- Zero model calls in any TeamRuntime API (CI-greppable test).
+- 21 new tests; suite 268. contract.md §23.
 
 ## 0.11.0 (2026-11-14)
 
