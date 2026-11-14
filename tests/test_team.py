@@ -160,6 +160,16 @@ class TestMemberExecution:
         board = rt.task(tid).metadata["results"]
         assert board[0]["summary"] == "done"
 
+    def test_depth_overflow_rejected_at_runtime(self):
+        rt = TeamRuntime(_definition(max_depth=2), state_dir=temp_dir())
+        rt.activate()
+        tid = rt.add_task(TeamTask(title="t"))
+        import asyncio
+
+        with pytest.raises(TeamStateError):
+            asyncio.run(rt.run_member(rt.definition.member("lead"), tid, _brief(), None, depth=2))
+        asyncio.run(rt.run_member(rt.definition.member("lead"), tid, _brief(), None, depth=1))
+
     def test_member_failure_lands_on_board_not_raised(self):
         rt = TeamRuntime(_definition(), state_dir=temp_dir())
         rt.activate()
