@@ -172,3 +172,23 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 - `RiskIntelClient(base_url, ...)` calls fusion-security `POST /api/v1/agent/risk-score` (wire contract: `schemas/agent-risk-score.v1.json` in fusion-security) and pushes the harness's own allow/deny back to `POST /api/v1/agent/decisions` (closed feedback loop).
 - Opt-in: `ToolFunnel(security_intel=...)`. Unwired or unreachable endpoint = exact previous behavior (logged no-op — intel is an upgrade, never a dependency; harness keeps working offline).
 - Hints are **advisory by default** — recorded in the `security_intel` lifecycle event only. `enforce_hints=True` turns an intel `deny` hint into a funnel denial. Harness remains the deny-first executor in all cases; the permission engine's decision is never overridden by intel.
+
+## 19. Spawn Brief Contract + Effort Tiers (0.11.0, issue #26)
+
+- `SpawnBrief` carries objective / output_format / tool_guidance / boundaries / token_budget / concurrency / depth; `validate_brief()` is a pure function and `brief_from_event()` raises typed `SpawnBriefError` on incomplete payloads — vague briefs are bugs, fail visibly. `depth <= 3` is an orchestration-ladder guard.
+- `EffortTierConfig.resolve(estimated_tool_calls)` is deterministic (no model call): <=3 calls means 1 agent; 3-10 means 2-4 subagents with explicit responsibilities; >10 means 10+ split. Rules are config, not lead-prompt improvisation.
+
+## 20. Artifact-Summary Dual Channel (0.11.0, issue #27)
+
+- `ArtifactStore` writes full worker outputs to `<root>/<run_id>/` and returns lightweight refs; `SummaryInjector.inject_front()` places per-worker summaries + refs at the FRONT of the coordinator context (after the system prefix), idempotent on re-inject (Lost in the Middle: front placement, mid-context recall collapses).
+- Deterministic `default_summarize` fallback; injectable `summarize` callable; summary schema driven by the P2 brief's `output_format`.
+
+## 21. Playbook Structured Append Protocol (0.11.0, issue #28)
+
+- `PlaybookOp` (add/update/delete, provenance episodes required, typed validation) applied append-first to an append-only op log; `render()` folds deterministically with tombstones (history never rewritten); `trace(entry_id)` returns all originating episodes. Targets ACE failure modes: brevity bias + context collapse (arXiv 2510.04618).
+
+## 22. KV-Cache Discipline (0.11.0, issue #29)
+
+- `assert_stable_prefix(turn_prompts)` flags turns whose prompt does not extend turn 0 byte-identically (lint-style CI hook).
+- `check_append_only(before, after, compaction=False)`: context mutation must be append-only; rewrites only at explicit compaction boundaries.
+- `mask_tools` / `ToolAvailabilityState`: mid-task tool availability changes are masking flags (`x-fusion-masked`) on an unchanged, same-order schema list — never add/remove (Manus 2025-07-18: dynamic tool-list mutation invalidates the KV prefix and induces schema violations).

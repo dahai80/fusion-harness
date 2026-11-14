@@ -7,7 +7,7 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.10.1
+version: 0.11.0
 updated: 2026-11-12
 owner: "@dahai"
 source_of_truth:
@@ -15,6 +15,27 @@ source_of_truth:
 ---
 
 # Changelog
+
+## 0.11.0 (2026-11-14)
+
+### Collaboration discipline layer (issues #26-#29, insight 2026-11-14)
+
+- `fusion_harness.spawn_protocol` (#26): SpawnBrief contract (7 required
+  fields, typed SpawnBriefError on incomplete — vague briefs are bugs) +
+  deterministic EffortTierConfig.resolve (1 agent <=3 calls; 2-4 subagents
+  3-10; 10+ split >10). Pure functions, no model call.
+- `fusion_harness.artifact_channel` (#27): ArtifactStore (full worker
+  outputs to per-run dirs) + SummaryInjector (compressed summaries +
+  refs at the FRONT of coordinator context, idempotent; Lost in the
+  Middle placement). Deterministic fallback summarizer, injectable.
+- `fusion_harness.playbook` (#28): append-only op log (add/update/delete
+  with mandatory provenance episodes), tombstoned deletes, render() fold,
+  trace() provenance. Anti brevity-bias / context-collapse (ACE).
+- `fusion_harness.cache_discipline` (#29): assert_stable_prefix (byte-
+  identical prefix check), check_append_only (mutation only at compaction
+  boundaries), mask_tools + ToolAvailabilityState (mask, never remove —
+  KV prefix stays valid across availability changes).
+- 17 new tests; suite 247. contract.md §19-§22.
 
 ## 0.10.1 (2026-11-13)
 
