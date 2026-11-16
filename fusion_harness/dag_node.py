@@ -220,9 +220,28 @@ def _coerce_enum(name: str, value: Any, choices: List[Any], errors: List[str]) -
     return value
 
 
-def coerce_params(params: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str, Any]:
-    """Strict coercion against a JSON-schema-shaped spec; raises
-    ParamCoercionError listing every field + expected + received on failure.
+def _lenient_fallback(key: str, value: Any, decl_type: str) -> Any:
+    """cowork-parity best-effort fallbacks for LLM-generated params:
+    "3.7" declared integer truncates to 3; "a,b,c" declared array CSV-splits.
+    Anything else passes through unchanged."""
+    if decl_type == "integer" and isinstance(value, str):
+        try:
+            return int(float(value.strip()))
+        except ValueError:
+            pass
+    if decl_type == "array" and isinstance(value, str):
+        return [item.strip() for item in value.split(",") if item.strip()]
+    return value
+
+
+def coerce_params(
+    params: Dict[str, Any], schema: Dict[str, Any], strict: bool = True
+) -> Dict[str, Any]:
+    """Coercion against a JSON-schema-shaped spec. strict=True (default)
+    raises ParamCoercionError listing every field + expected + received.
+    strict=False (lenient, cowork parity) coerces valid fields, applies
+    best-effort fallbacks ("3.7"->3 truncation, "a,b,c" CSV split) and
+    passes unconvertible values through unchanged with a warning log.
     Keys without a declared type pass through untouched."""
     properties = schema.get("properties", {}) if isinstance(schema, dict) else {}
     errors: List[str] = []
@@ -233,6 +252,7 @@ def coerce_params(params: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str, A
             coerced[key] = value
             continue
         decl_type = decl.get("type", "string")
+        before = len(errors)
         if decl_type == "integer":
             coerced[key] = _coerce_integer(key, value, errors)
         elif decl_type == "number":
@@ -253,7 +273,16 @@ def coerce_params(params: Dict[str, Any], schema: Dict[str, Any]) -> Dict[str, A
                 coerced[key] = value
         else:
             coerced[key] = value
-    if errors:
+        if not strict and len(errors) > before:
+            errors = errors[:before]
+            coerced[key] = _lenient_fallback(key, value, decl_type)
+            logger.warning(
+                "lenient coercion field '%s' expected %s, kept fallback %r",
+                key,
+                decl_type,
+                coerced[key],
+            )
+    if strict and errors:
         raise ParamCoercionError(errors)
     return coerced
 

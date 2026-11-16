@@ -7,7 +7,7 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.13.0
+version: 0.14.0
 updated: 2026-11-14
 owner: "@dahai"
 source_of_truth:
@@ -15,6 +15,25 @@ source_of_truth:
 ---
 
 # Changelog
+
+## 0.14.0 (2026-11-16)
+
+### Chat standardization C1 + lenient coercion (issues #38 #39)
+
+- `team_runtime` (#38, C1): `TeamMessage` extended — `msg_id` generated at
+  send ("msg_"+hex8, stored in inbox record; `send` now returns
+  `{"delivered": bool, "msg_id": str}`), `reply_to` (format-validated msg_
+  prefix, existence unchecked), `mentions` (declared members only, unknown
+  = TeamStateError at send/broadcast time; broadcast rejects up front),
+  `attachments` (artifact refs, shape-validated only), `audio_ref` +
+  `transcript` (voice = text message with fields; MSG_TYPES unchanged).
+  Pre-extension inbox records load with defaults. Additive; bare-bool
+  callers adapt one line.
+- `dag_node.coerce_params` (#39): opt-in `strict=False` lenient mode with
+  cowork parity for LLM-generated params — per-field coercion, unconvertible
+  values pass through with warning, "3.7" integer truncates, "a,b,c" array
+  CSV-splits. Strict default unchanged.
+- 8 new tests; suite 355. contract.md §23 + §25 updated.
 
 ## 0.13.0 (2026-11-14)
 

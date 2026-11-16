@@ -189,16 +189,20 @@ class TestMailbox:
     def test_send_delivered_only_on_write_success(self):
         rt = TeamRuntime(_definition(), state_dir=temp_dir())
         rt.activate()
-        ok = rt.send(TeamMessage(type="text", sender="lead", recipient="worker1", body="hi"))
-        assert ok is True
-        assert rt.inbox("worker1")[0]["body"] == "hi"
+        outcome = rt.send(TeamMessage(type="text", sender="lead", recipient="worker1", body="hi"))
+        assert outcome["delivered"] is True
+        assert outcome["msg_id"].startswith("msg_")
+        record = rt.inbox("worker1")[0]
+        assert record["body"] == "hi"
+        assert record["msg_id"] == outcome["msg_id"]
 
-    def test_send_failure_returns_false(self):
+    def test_send_failure_returns_delivered_false(self):
         rt = TeamRuntime(_definition(), state_dir=temp_dir())
         rt.activate()
         rt._inbox_path = lambda name: "/proc/nonexistent-dir/x.json"
-        ok = rt.send(TeamMessage(type="text", sender="lead", recipient="worker1", body="hi"))
-        assert ok is False
+        outcome = rt.send(TeamMessage(type="text", sender="lead", recipient="worker1", body="hi"))
+        assert outcome["delivered"] is False
+        assert outcome["msg_id"].startswith("msg_")
         assert rt.inbox("worker1") == []
 
     def test_message_type_enum_validated(self):
@@ -213,6 +217,100 @@ class TestMailbox:
         assert len(rt.inbox("worker1")) == 1
         assert len(rt.inbox("worker2")) == 1
         assert rt.inbox("lead") == []
+
+
+class TestMessageExtension:
+    def test_msg_id_generated_stored_unique(self):
+        rt = TeamRuntime(_definition(), state_dir=temp_dir())
+        rt.activate()
+        first = rt.send(TeamMessage(type="text", sender="lead", recipient="worker1", body="a"))
+        second = rt.send(TeamMessage(type="text", sender="lead", recipient="worker1", body="b"))
+        assert first["msg_id"] != second["msg_id"]
+        inbox = rt.inbox("worker1")
+        assert [r["msg_id"] for r in inbox] == [first["msg_id"], second["msg_id"]]
+
+    def test_reply_to_malformed_rejected(self):
+        with pytest.raises(TeamMessageError):
+            TeamMessage(type="text", sender="lead", recipient="worker1", reply_to="abc123")
+        msg = TeamMessage(type="text", sender="lead", recipient="worker1", reply_to="msg_ab12cd34")
+        assert msg.reply_to == "msg_ab12cd34"
+
+    def test_unknown_mention_rejected_at_send(self):
+        rt = TeamRuntime(_definition(), state_dir=temp_dir())
+        rt.activate()
+        with pytest.raises(TeamStateError):
+            rt.send(
+                TeamMessage(
+                    type="text",
+                    sender="lead",
+                    recipient="worker1",
+                    mentions=("ghost-member",),
+                )
+            )
+        assert rt.inbox("worker1") == []
+
+    def test_known_mention_and_fields_persisted(self):
+        rt = TeamRuntime(_definition(), state_dir=temp_dir())
+        rt.activate()
+        outcome = rt.send(
+            TeamMessage(
+                type="text",
+                sender="lead",
+                recipient="worker1",
+                body="check",
+                mentions=("worker2",),
+                attachments=("run1/out.json",),
+                audio_ref="run1/voice.wav",
+                transcript="please verify",
+            )
+        )
+        assert outcome["delivered"] is True
+        record = rt.inbox("worker1")[0]
+        assert record["mentions"] == ["worker2"]
+        assert record["attachments"] == ["run1/out.json"]
+        assert record["audio_ref"] == "run1/voice.wav"
+        assert record["transcript"] == "please verify"
+
+    def test_broadcast_with_mention_delivers_excluding_sender(self):
+        rt = TeamRuntime(_definition(), state_dir=temp_dir())
+        rt.activate()
+        delivered = rt.broadcast("worker1", "standup", mentions=("worker2",))
+        assert delivered == 2
+        assert len(rt.inbox("worker2")) == 1
+        assert len(rt.inbox("lead")) == 1
+        assert rt.inbox("worker1") == []
+
+    def test_broadcast_unknown_mention_rejected_up_front(self):
+        rt = TeamRuntime(_definition(), state_dir=temp_dir())
+        rt.activate()
+        with pytest.raises(TeamStateError):
+            rt.broadcast("lead", "standup", mentions=("nobody",))
+        assert rt.inbox("worker1") == []
+        assert rt.inbox("worker2") == []
+
+    def test_empty_attachment_string_rejected(self):
+        with pytest.raises(TeamMessageError):
+            TeamMessage(type="text", sender="lead", recipient="worker1", attachments=("",))
+
+    def test_old_persisted_record_loads_with_defaults(self):
+        rt = TeamRuntime(_definition(), state_dir=temp_dir())
+        rt.activate()
+        pre_extension = {
+            "type": "text",
+            "sender": "lead",
+            "recipient": "worker1",
+            "body": "legacy",
+        }
+        rt._inboxes["worker1"].append(pre_extension)
+        path = os.path.join(rt.state_dir, "state.json")
+        rt.save_state(path)
+
+        rt2 = TeamRuntime(_definition(), state_dir=temp_dir())
+        rt2.load_state(path)
+        records = rt2.inbox("worker1")
+        assert records[0]["body"] == "legacy"
+        assert records[0].get("msg_id", "") == ""
+        assert records[0].get("mentions") is None or records[0].get("mentions") in ((), None)
 
 
 class TestPersistence:

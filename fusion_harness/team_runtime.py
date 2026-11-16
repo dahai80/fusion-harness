@@ -11,12 +11,13 @@ import json
 import logging
 import os
 import threading
+import uuid
 from dataclasses import asdict, dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
 from fusion_harness.spawn_protocol import SpawnBrief, brief_from_event
 from fusion_harness.subagent import SubagentResult, SubagentRunner, SubagentSpec
-from fusion_harness.team import TeamDefinition, TeamMember
+from fusion_harness.team import TeamDefError, TeamDefinition, TeamMember
 
 logger = logging.getLogger(__name__)
 
@@ -71,12 +72,26 @@ class TeamMessage:
     sender: str
     recipient: str
     body: str = ""
+    msg_id: str = ""
+    reply_to: str = ""
+    mentions: tuple = ()
+    attachments: tuple = ()
+    audio_ref: str = ""
+    transcript: str = ""
 
     def __post_init__(self) -> None:
         if self.type not in MSG_TYPES:
             raise TeamMessageError("unknown message type: %s" % self.type)
         if not self.sender or not self.recipient:
             raise TeamMessageError("sender and recipient required")
+        if self.reply_to and not self.reply_to.startswith("msg_"):
+            raise TeamMessageError(
+                "reply_to must be empty or a msg_id (msg_...): %s" % self.reply_to
+            )
+        if any(not isinstance(m, str) or not m for m in self.mentions):
+            raise TeamMessageError("mentions must be non-empty member-name strings")
+        if any(not isinstance(a, str) or not a for a in self.attachments):
+            raise TeamMessageError("attachments must be non-empty artifact-ref strings")
 
 
 class TeamRuntime:
@@ -244,27 +259,51 @@ class TeamRuntime:
     def _inbox_path(self, member_name: str) -> str:
         return os.path.join(self.state_dir, "inboxes", "%s.json" % member_name)
 
-    def send(self, msg: TeamMessage) -> bool:
-        """Delivered only when the inbox file write succeeds."""
-        self.definition.member(msg.sender)
-        self.definition.member(msg.recipient)
-        record = asdict(msg)
+    def _require_member(self, name: str) -> None:
+        try:
+            self.definition.member(name)
+        except TeamDefError as exc:
+            raise TeamStateError(str(exc))
+
+    def send(self, msg: TeamMessage) -> Dict[str, Any]:
+        """Delivered only when the inbox file write succeeds. Returns
+        {"delivered": bool, "msg_id": str} — msg_id is generated here and
+        stored in the inbox record."""
+        self._require_member(msg.sender)
+        self._require_member(msg.recipient)
+        for name in msg.mentions:
+            self._require_member(name)
+        if not msg.msg_id:
+            msg.msg_id = "msg_%s" % uuid.uuid4().hex[:8]
+        record = json.loads(json.dumps(asdict(msg), ensure_ascii=False))
         self._inboxes[msg.recipient].append(record)
         if not self._persist_inbox(msg.recipient):
             self._inboxes[msg.recipient].pop()
             logger.error("mailbox delivery failed recipient=%s", msg.recipient)
-            return False
-        self._emit("team.msg.sent", {"from": msg.sender, "to": msg.recipient, "type": msg.type})
-        return True
+            return {"delivered": False, "msg_id": msg.msg_id}
+        self._emit(
+            "team.msg.sent",
+            {"from": msg.sender, "to": msg.recipient, "type": msg.type, "msg_id": msg.msg_id},
+        )
+        return {"delivered": True, "msg_id": msg.msg_id}
 
-    def broadcast(self, sender: str, body: str, type_: str = "text") -> int:
-        """One delivery per member (sender excluded)."""
-        self.definition.member(sender)
+    def broadcast(self, sender: str, body: str, type_: str = "text", mentions: tuple = ()) -> int:
+        """One delivery per member (sender excluded). Mentions validated
+        against the member list up front — unknown mention rejects the whole
+        broadcast before anything is queued."""
+        self._require_member(sender)
+        for name in mentions:
+            self._require_member(name)
         delivered = 0
         for member in self.definition.members:
             if member.name == sender:
                 continue
-            if self.send(TeamMessage(type=type_, sender=sender, recipient=member.name, body=body)):
+            outcome = self.send(
+                TeamMessage(
+                    type=type_, sender=sender, recipient=member.name, body=body, mentions=mentions
+                )
+            )
+            if outcome["delivered"]:
                 delivered += 1
         return delivered
 
