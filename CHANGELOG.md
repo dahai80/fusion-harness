@@ -7,7 +7,7 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.14.0
+version: 0.14.1
 updated: 2026-11-14
 owner: "@dahai"
 source_of_truth:
@@ -15,6 +15,15 @@ source_of_truth:
 ---
 
 # Changelog
+
+## 0.14.1 (2026-11-16)
+
+### CI efficiency retrofit (issue #41, fusion#2 checklist)
+
+- Workflows: concurrency cancel groups by ref on ci/docs (release grouped,
+  never cancelled mid-publish); pip dependency cache keyed on pyproject.toml
+  for ci matrix + release jobs; sharding and nightly assessed as not needed
+  (full matrix 15-47s). Workflow-only change, zero code delta.
 
 ## 0.14.0 (2026-11-16)
 
