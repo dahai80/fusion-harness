@@ -61,6 +61,15 @@ from fusion_harness.trajectory import (
     TrajectoryWriter,
     normalize_record,
 )
+from fusion_harness.file_segment import (
+    DEFAULT_MAX_BYTES_CAP,
+    SegmentBudget,
+    SegmentError,
+    SegmentPolicy,
+    read_segment,
+    render_segment_result,
+    segment_header,
+)
 from fusion_harness.human_gate import (
     HumanGate,
     HumanGateError,
@@ -128,7 +137,7 @@ from fusion_harness.policies import (
     run_with_retry,
 )
 
-KERNEL_VERSION = "0.15.0"
+KERNEL_VERSION = "0.16.0"
 
 __all__ = [
     "KERNEL_VERSION",
@@ -208,6 +217,7 @@ __all__ = [
     "TrajectoryWriter",
     "normalize_record",
     "HIGH_RISK_NODES",
+    "DEFAULT_MAX_BYTES_CAP",
     "HumanGate",
     "HumanGateError",
     "HumanQuestion",
@@ -235,6 +245,9 @@ __all__ = [
     "SubprocessSessionRuntime",
     "RuntimeNotReady",
     "ReceiptCache",
+    "SegmentBudget",
+    "SegmentError",
+    "SegmentPolicy",
     "ReceiptReplayed",
     "ReplyValidationError",
     "ReconcileReport",
@@ -251,5 +264,8 @@ __all__ = [
     "idempotency_key",
     "run_with_retry",
     "score_tool_risk",
+    "read_segment",
+    "render_segment_result",
+    "segment_header",
     "validate_reply",
 ]
