@@ -7,7 +7,7 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.15.0
+version: 0.16.0
 updated: 2026-11-17
 owner: "@dahai"
 source_of_truth:
@@ -15,6 +15,29 @@ source_of_truth:
 ---
 
 # Changelog
+
+## 0.16.0 (2026-11-17)
+
+### file.read_segment contract + budget funnel integration (issue #46)
+
+- `fusion_harness.file_segment.read_segment(file_ref, offset, max_bytes,
+  policy, budget, turn_id)`: bounded byte-range read primitive (HTTP-Range
+  parity — fusion-rag #156 serves the same shape). Hard cap (256 KB
+  default) enforced inside the tool layer: oversize requests are CLAMPED,
+  never errored whole. Result carries `content`/`total`/`next_offset`/
+  `eof`; binary content returns base64 with an `encoding` flag. Missing
+  file raises (fail-visible).
+- Citable header: every result starts with
+  `[segment file=... bytes=START-END/TOTAL]` — compaction eviction embeds
+  the header in the cleared stub and `RetentionList` files segment headers
+  under constraints, so summaries cite what was already read.
+- `SegmentPolicy(max_bytes_cap, per_turn_bytes)` + `SegmentBudget`:
+  per-(turn, file_ref) byte ledger — bounds total attachment consumption
+  per turn independent of call count; exhaustion clamps to 0 bytes (eof
+  stays False), never errors. `render_segment_result` produces the
+  funnel-ready string that flows through `ToolFunnel.run_tool` like any
+  tool output — no special casing downstream.
+- 27 new tests (incl. compaction preservation); suite 385 → 412.
 
 ## 0.15.0 (2026-11-17)
 

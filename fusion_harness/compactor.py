@@ -41,6 +41,8 @@ class RetentionList:
                     rl._add(rl.interfaces, line, max_per_section)
                 if "constraint" in line.lower() or "约束" in line:
                     rl._add(rl.constraints, line, max_per_section)
+                if line.startswith("[segment file="):
+                    rl._add(rl.constraints, line, max_per_section)
                 if "pending" in line.lower() or "in_progress" in line or "进行中" in line:
                     rl._add(rl.active_tasks, line, max_per_section)
         logger.info(
@@ -360,9 +362,11 @@ class Compactor:
                 if content.startswith(_CLEARED_STUB_PREFIX):
                     continue
                 call_id = str(m.get("tool_call_id") or "")
+                first_line = content.splitlines()[0] if content else ""
+                citation = f"; {first_line}" if first_line.startswith("[segment file=") else ""
                 r[i] = {
                     **m,
-                    "content": f"{_CLEARED_STUB_PREFIX} id={call_id} bytes={len(content)}]",
+                    "content": f"{_CLEARED_STUB_PREFIX} id={call_id} bytes={len(content)}{citation}]",
                 }
                 cleared += 1
         if cleared:
