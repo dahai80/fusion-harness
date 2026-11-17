@@ -61,6 +61,13 @@ from fusion_harness.trajectory import (
     TrajectoryWriter,
     normalize_record,
 )
+from fusion_harness.human_gate import (
+    HumanGate,
+    HumanGateError,
+    HumanQuestion,
+    ReplyValidationError,
+    validate_reply,
+)
 from fusion_harness.team_runtime import (
     MSG_TYPES,
     TeamMessage,
@@ -121,7 +128,7 @@ from fusion_harness.policies import (
     run_with_retry,
 )
 
-KERNEL_VERSION = "0.14.1"
+KERNEL_VERSION = "0.15.0"
 
 __all__ = [
     "KERNEL_VERSION",
@@ -201,6 +208,9 @@ __all__ = [
     "TrajectoryWriter",
     "normalize_record",
     "HIGH_RISK_NODES",
+    "HumanGate",
+    "HumanGateError",
+    "HumanQuestion",
     "PermissionLevel",
     "ScopedPermission",
     "ScopedPermissionEngine",
@@ -226,6 +236,7 @@ __all__ = [
     "RuntimeNotReady",
     "ReceiptCache",
     "ReceiptReplayed",
+    "ReplyValidationError",
     "ReconcileReport",
     "RetryPolicy",
     "SessionEvent",
@@ -240,4 +251,5 @@ __all__ = [
     "idempotency_key",
     "run_with_retry",
     "score_tool_risk",
+    "validate_reply",
 ]
