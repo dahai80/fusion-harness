@@ -7,14 +7,37 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.14.1
-updated: 2026-11-14
+version: 0.15.0
+updated: 2026-11-17
 owner: "@dahai"
 source_of_truth:
   - CHANGELOG.md
 ---
 
 # Changelog
+
+## 0.15.0 (2026-11-17)
+
+### HumanGate: async human-approval hook + sink (issue #44)
+
+- `fusion_harness.human_gate.HumanGate(state_dir, bus)`: structured question
+  queue for long-running sessions — `ask(session_id, question, payload,
+  reply_schema, policy)` emits to a persistent on-disk queue
+  (`human_gate_queue.json`, atomic tmp+replace writes) plus a
+  `human_gate.question` lifecycle event; `reply(question_id, answer)`
+  validates against the reply schema (deliberate JSON-schema subset:
+  required + per-key type names, bool-never-int-field), marks answered,
+  wakes in-process waiters. Invalid reply rejected loudly, question stays
+  pending. `cancel` wakes waiters with None.
+- Policies: `block` = `await wait(question_id, timeout)` park point,
+  resolves with reply; already-answered (including answered before a
+  restart) resolves immediately. `continue` = session proceeds; reply
+  consumed later via `take_reply` (consumed-once semantics).
+- Restart survival: pending questions AND unconsumed replies both reload
+  on construction; corrupt entries skipped with warning, corrupt file
+  starts empty. Session routing via `pending(session_id)`.
+- Additive sink kind beside existing permission sinks — no engine-loop
+  changes, zero model calls. 30 new tests; suite 385.
 
 ## 0.14.1 (2026-11-16)
 
