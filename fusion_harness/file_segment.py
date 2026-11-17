@@ -107,18 +107,24 @@ def read_segment(
         logger.info("segment past eof file=%s offset=%d total=%d", file_ref, offset, total)
         return _result(file_ref, offset, offset, total, "", "utf-8", 0, eof=True)
 
+    if capped == 0:
+        # Budget admitted zero bytes mid-file: an empty non-eof success would
+        # invite a same-offset retry loop (issue #48) — return the explicit
+        # exhausted marker instead.
+        logger.warning(
+            "segment budget exhausted file=%s offset=%d turn=%s", file_ref, offset, turn_id
+        )
+        out = _result(file_ref, offset, offset, total, "", "utf-8", 0, eof=False)
+        out["budget_exhausted"] = True
+        return out
+
     with open(file_ref, "rb") as fh:
         fh.seek(offset)
         data = fh.read(capped)
 
-    try:
-        text = data.decode("utf-8")
-        encoding = "utf-8"
-    except UnicodeDecodeError:
-        text = base64.b64encode(data).decode("ascii")
-        encoding = "base64"
-
-    end = offset + len(data)
+    kept, encoding = _decode_segment(data)
+    text = kept.decode("utf-8") if encoding == "utf-8" else base64.b64encode(data).decode("ascii")
+    end = offset + len(kept) if encoding == "utf-8" else offset + len(data)
     eof = end >= total
     logger.info(
         "segment read file=%s range=%d-%d/%d encoding=%s eof=%s",
@@ -129,7 +135,47 @@ def read_segment(
         encoding,
         eof,
     )
-    return _result(file_ref, offset, end, total, text, encoding, len(data), eof)
+    return _result(file_ref, offset, end, total, text, encoding, len(kept), eof)
+
+
+def _decode_segment(data: bytes) -> tuple:
+    """Decode a segment to text, holding back an incomplete multibyte UTF-8
+    tail (up to 3 bytes) so the next segment carries it — a fixed byte range
+    must not split a character and misclassify the whole segment as binary
+    (issue #48). Returns (kept_bytes, encoding)."""
+    try:
+        data.decode("utf-8")
+        return data, "utf-8"
+    except UnicodeDecodeError:
+        pass
+    hold = 0
+    n = len(data)
+    while hold < 3 and n - hold > 0 and (data[n - hold - 1] & 0xC0) == 0x80:
+        hold += 1
+    if hold < 3 and n - hold > 0:
+        lead = data[n - hold - 1]
+        seq_len = _utf8_seq_len(lead)
+        # Incomplete sequence: lead byte + held continuations < expected length.
+        if seq_len > 1 and hold + 1 < seq_len:
+            hold = min(3, hold + 1)
+    kept = data[: n - hold] if hold else data
+    try:
+        kept.decode("utf-8")
+        if hold:
+            logger.info("segment utf-8 boundary trim held=%d bytes", hold)
+        return kept, "utf-8"
+    except UnicodeDecodeError:
+        return data, "base64"
+
+
+def _utf8_seq_len(lead: int) -> int:
+    if lead & 0xE0 == 0xC0:
+        return 2
+    if lead & 0xF0 == 0xE0:
+        return 3
+    if lead & 0xF8 == 0xF0:
+        return 4
+    return 1
 
 
 def _result(file_ref, start, end, total, content, encoding, nbytes, eof) -> dict:
@@ -143,6 +189,7 @@ def _result(file_ref, start, end, total, content, encoding, nbytes, eof) -> dict
         "encoding": encoding,
         "content": content,
         "bytes": nbytes,
+        "budget_exhausted": False,
         "header": segment_header(file_ref, start, end, total),
     }
 
@@ -162,6 +209,8 @@ def render_segment_result(result: dict) -> str:
         if result.get("eof")
         else "\n[truncated: continue at next_offset=%d]" % result.get("next_offset", 0)
     )
+    if result.get("budget_exhausted"):
+        suffix += "\n[budget exhausted for this turn: stop reading this file]"
     return "%s\n%s%s" % (header, result.get("content", ""), suffix)
 
 

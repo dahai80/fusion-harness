@@ -293,6 +293,81 @@ class TestCompactionPreservation:
         assert "[segment" not in stub
 
 
+class TestUtf8Boundary:
+    def test_cjk_walk_all_utf8_no_base64(self, tmp_path):
+        text = "前沿模型注意力机制研究摘要。" * 20
+        p = tmp_path / "cjk.txt"
+        p.write_text(text, encoding="utf-8")
+        pieces = []
+        offset = 0
+        encodings = set()
+        while True:
+            out = read_segment(str(p), offset=offset, max_bytes=64)
+            encodings.add(out["encoding"])
+            pieces.append(out["content"])
+            if out["eof"]:
+                break
+            offset = out["next_offset"]
+        assert encodings == {"utf-8"}
+        assert "".join(pieces) == text
+
+    def test_boundary_trim_next_offset_backs_off(self, tmp_path):
+        text = " abc" * 10
+        p = tmp_path / "t.txt"
+        p.write_text(text, encoding="utf-8")
+        out = read_segment(str(p), offset=0, max_bytes=5)
+        assert out["encoding"] == "utf-8"
+        assert text.startswith(out["content"])
+        assert out["next_offset"] <= 5
+
+    def test_real_binary_still_base64(self, bin_file):
+        out = read_segment(bin_file, max_bytes=256)
+        assert out["encoding"] == "base64"
+
+    def test_trailing_incomplete_multibyte_carried_forward(self, tmp_path):
+        text = "aa研究发现"
+        p = tmp_path / "t2.txt"
+        raw = text.encode("utf-8")
+        p.write_bytes(raw)
+        out = read_segment(str(p), offset=0, max_bytes=4)
+        assert out["encoding"] == "utf-8"
+        assert raw.startswith(out["content"].encode("utf-8"))
+        assert out["next_offset"] < len(raw)
+        out2 = read_segment(str(p), offset=out["next_offset"], max_bytes=64)
+        assert out2["encoding"] == "utf-8"
+        assert (out["content"] + out2["content"]).encode("utf-8") == raw
+        assert out2["eof"] is True
+
+
+class TestBudgetExhaustedMarker:
+    def test_exhausted_returns_marker_not_empty_success(self, text_file):
+        policy = SegmentPolicy(max_bytes_cap=600, per_turn_bytes=600)
+        budget = SegmentBudget(policy)
+        read_segment(text_file, policy=policy, budget=budget, turn_id="t1")
+        out = read_segment(text_file, offset=600, policy=policy, budget=budget, turn_id="t1")
+        assert out["budget_exhausted"] is True
+        assert out["content"] == ""
+        assert out["eof"] is False
+        assert out["next_offset"] == 600
+
+    def test_marker_absent_on_normal_reads(self, text_file):
+        out = read_segment(text_file, max_bytes=100)
+        assert out["budget_exhausted"] is False
+
+    def test_render_notes_exhaustion(self, text_file):
+        policy = SegmentPolicy(max_bytes_cap=600, per_turn_bytes=600)
+        budget = SegmentBudget(policy)
+        read_segment(text_file, policy=policy, budget=budget, turn_id="t1")
+        out = read_segment(text_file, offset=600, policy=policy, budget=budget, turn_id="t1")
+        rendered = render_segment_result(out)
+        assert "[budget exhausted for this turn" in rendered
+
+    def test_past_eof_not_marker(self, text_file):
+        out = read_segment(text_file, offset=5000)
+        assert out["budget_exhausted"] is False
+        assert out["eof"] is True
+
+
 class TestZeroModelCalls:
     def test_no_model_imports(self):
         src = open(
