@@ -7,7 +7,7 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.16.0
+version: 0.16.1
 updated: 2026-11-17
 owner: "@dahai"
 source_of_truth:
@@ -15,6 +15,25 @@ source_of_truth:
 ---
 
 # Changelog
+
+## 0.16.1 (2026-11-17)
+
+### read_segment follow-ups (issue #48)
+
+- UTF-8 chunk-boundary fix: fixed byte ranges no longer misclassify CJK
+  segments as binary — an incomplete multibyte tail (up to 3 bytes) is
+  held back to the last character boundary and carried by the next
+  segment (`next_offset` backs off accordingly); base64 fallback only
+  when the trimmed segment is still invalid. Mirrors fusion-console
+  e46ca59 (`attachments.go`).
+- Budget-exhausted marker: when `SegmentBudget.admit` clamps to 0 bytes
+  mid-file, result now carries `budget_exhausted: true` (rendered output
+  appends `[budget exhausted for this turn: stop reading this file]`)
+  instead of an empty non-eof success that invited same-offset retry
+  loops. `budget_exhausted: false` on all normal reads.
+- Contract note: `next_offset = end` + `eof: true` is the canonical eof
+  shape (fusion-console aligned in e46ca59; fusion-rag #156 to follow).
+- 8 new tests; suite 412 → 420.
 
 ## 0.16.0 (2026-11-17)
 
