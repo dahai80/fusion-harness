@@ -32,6 +32,7 @@ class TeamMember:
     permission_mode: str = "default"
     budget_tokens: int = 50_000
     max_concurrency: int = 1
+    context: str = ""
 
     def __post_init__(self) -> None:
         if not _MEMBER_NAME_RE.match(self.name or ""):

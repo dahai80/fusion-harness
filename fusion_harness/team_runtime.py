@@ -21,6 +21,9 @@ from fusion_harness.team import TeamDefError, TeamDefinition, TeamMember
 
 logger = logging.getLogger(__name__)
 
+TEAM_SPEC_CAP_BYTES = 4096
+MEMBER_CONTEXT_CAP_BYTES = 2048
+
 MSG_TYPES = ("text", "plan_approval", "shutdown_request", "shutdown_response")
 _TASK_TRANSITIONS = {
     ("todo", "in_progress"),
@@ -207,6 +210,42 @@ class TeamRuntime:
 
     # ---------- member execution ----------
 
+    @staticmethod
+    def _truncate_utf8(text: str, cap: int) -> str:
+        data = text.encode("utf-8")[:cap]
+        return data.decode("utf-8", errors="ignore")
+
+    def _assemble_member_prompt(self, member: TeamMember, objective: str) -> str:
+        """Issue #61: resident per-member context assembly. Members are
+        in-process runs with no cwd and no AGENTS.md load, so the lead's
+        brief objective is their entire per-round context. Prepend the
+        team spec (SPEC.md, re-read every dispatch so edits apply without
+        restart) and the member's resident context field. Sections the
+        member cannot act on are omitted, never errored — a member whose
+        allowlist lacks file_read still gets the injected text."""
+        sections = []
+        spec_path = os.path.abspath(os.path.join(self.state_dir, "SPEC.md"))
+        try:
+            with open(spec_path, "r", encoding="utf-8") as fh:
+                spec_text = fh.read()
+        except OSError:
+            spec_text = ""
+        if spec_text.strip():
+            sections.append(
+                "[team spec]\n%s\n(spec path: %s)"
+                % (self._truncate_utf8(spec_text, TEAM_SPEC_CAP_BYTES), spec_path)
+            )
+            logger.info("team spec injected member=%s path=%s", member.name, spec_path)
+        if member.context.strip():
+            sections.append(
+                "[member context]\n%s"
+                % self._truncate_utf8(member.context, MEMBER_CONTEXT_CAP_BYTES)
+            )
+            logger.info("member context injected member=%s", member.name)
+        if not sections:
+            return objective
+        return "\n\n".join(sections) + "\n\n" + objective
+
     async def run_member(
         self, member: TeamMember, task_id: str, brief: SpawnBrief, agent_fn, depth: int = 1
     ) -> SubagentResult:
@@ -223,9 +262,10 @@ class TeamRuntime:
                 % (depth, self.definition.max_depth)
             )
         budget = min(member.budget_tokens, full_brief.token_budget)
+        prompt = self._assemble_member_prompt(member, full_brief.objective)
         spec = SubagentSpec(
             name=member.name,
-            prompt=full_brief.objective,
+            prompt=prompt,
             tool_allowlist=list(member.tool_allowlist),
             permission_mode=member.permission_mode,
             budget_tokens=budget,
