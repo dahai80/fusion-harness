@@ -54,11 +54,14 @@ from fusion_harness.dag_node import (
 from fusion_harness.checkpoint_binding import NodeStateBinder, bind_node_state
 from fusion_harness.artifact_channel import ArtifactTools
 from fusion_harness.trajectory import (
+    DISCARD_REASONS as TRAJECTORY_DISCARD_REASONS,
     EVENTS as TRAJECTORY_EVENTS,
+    PrefixStabilityTracker,
     TrajectoryReader,
     TrajectoryRecord,
     TrajectorySchemaError,
     TrajectoryWriter,
+    mark_discardable,
     normalize_record,
 )
 from fusion_harness.handoff_verify import (
@@ -256,10 +259,13 @@ __all__ = [
     "bind_node_state",
     "ArtifactTools",
     "TRAJECTORY_EVENTS",
+    "TRAJECTORY_DISCARD_REASONS",
     "TrajectoryReader",
     "TrajectoryRecord",
     "TrajectorySchemaError",
     "TrajectoryWriter",
+    "PrefixStabilityTracker",
+    "mark_discardable",
     "normalize_record",
     "HIGH_RISK_NODES",
     "DEFAULT_MAX_BYTES_CAP",
