@@ -1,0 +1,116 @@
+{
+  "name": "long-tool-chain-session",
+  "description": "Recorded transcript: debugging run with a long chain of tool results (old results get cleared/stubbed); the critical state lives in constraint and TODO lines plus the most recent rounds.",
+  "rules": [
+    "constraint: never edit files outside the run workspace",
+    "constraint: quote tool output before reasoning over it"
+  ],
+  "task_markers": [
+    "constraint: never edit files outside the run workspace",
+    "constraint: quote tool output before reasoning over it",
+    "TODO: re-run the failing permission test after the funnel fix",
+    "def evaluate_tool_call(name: str, args: dict) -> str"
+  ],
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are the debugging agent.\nconstraint: never edit files outside the run workspace\nconstraint: quote tool output before reasoning over it"
+    },
+    {
+      "role": "user",
+      "content": "Investigate the permission funnel failure.\ndef evaluate_tool_call(name: str, args: dict) -> str is the admission entrypoint.\nTODO: re-run the failing permission test after the funnel fix"
+    },
+    {
+      "role": "assistant",
+      "content": "Reading the admission chain first."
+    },
+    {
+      "role": "tool",
+      "content": "trace line 001: admit() entered for tool fs.write args {'path': 'out/x.log'} verbose recorded output chunk alpha with plenty of filler text to exercise tool result clearing"
+    },
+    {
+      "role": "tool",
+      "content": "trace line 002: permission engine returned allow for readonly hint false filler recorded chunk beta with more filler text to bulk out the transcript for the compaction run"
+    },
+    {
+      "role": "tool",
+      "content": "trace line 003: budget check passed at 412 tokens filler recorded chunk gamma padding the long tool chain fixture with realistic bulk"
+    },
+    {
+      "role": "tool",
+      "content": "trace line 004: funnel logged tool_after event filler recorded chunk delta padding the long tool chain fixture with realistic bulk content"
+    },
+    {
+      "role": "tool",
+      "content": "trace line 005: audit logger wrote receipt filler recorded chunk epsilon padding the long tool chain fixture with realistic bulk content"
+    },
+    {
+      "role": "tool",
+      "content": "trace block 000: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (seq 0, filler for volume)"
+    },
+    {
+      "role": "tool",
+      "content": "trace block 001: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (seq 1, filler for volume)"
+    },
+    {
+      "role": "tool",
+      "content": "trace block 002: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (seq 2, filler for volume)"
+    },
+    {
+      "role": "tool",
+      "content": "trace block 003: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (seq 3, filler for volume)"
+    },
+    {
+      "role": "tool",
+      "content": "trace block 004: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (seq 4, filler for volume)"
+    },
+    {
+      "role": "tool",
+      "content": "trace block 005: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (seq 5, filler for volume)"
+    },
+    {
+      "role": "tool",
+      "content": "trace block 006: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (seq 6, filler for volume)"
+    },
+    {
+      "role": "tool",
+      "content": "trace block 007: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (seq 7, filler for volume)"
+    },
+    {
+      "role": "tool",
+      "content": "trace block 008: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (seq 8, filler for volume)"
+    },
+    {
+      "role": "tool",
+      "content": "trace block 009: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (seq 9, filler for volume)"
+    },
+    {
+      "role": "user",
+      "content": "progress note 0: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (note 0)"
+    },
+    {
+      "role": "user",
+      "content": "progress note 1: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (note 1)"
+    },
+    {
+      "role": "user",
+      "content": "progress note 2: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (note 2)"
+    },
+    {
+      "role": "tool",
+      "content": "trace line 006: lifecycle bus emitted tool_before filler recorded chunk zeta padding the long tool chain fixture with realistic bulk content"
+    },
+    {
+      "role": "tool",
+      "content": "trace line 007: readonly set loaded 12 tools filler recorded chunk eta padding the long tool chain fixture with realistic bulk content"
+    },
+    {
+      "role": "assistant",
+      "content": "The chain shows the deny came from the missing rule layer, not the engine.\nTODO: re-run the failing permission test after the funnel fix"
+    },
+    {
+      "role": "user",
+      "content": "Agreed. Keep the entrypoint visible:\ndef evaluate_tool_call(name: str, args: dict) -> str\nconstraint: never edit files outside the run workspace"
+    }
+  ]
+}

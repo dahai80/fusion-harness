@@ -1,0 +1,86 @@
+{
+  "name": "rule-heavy-session",
+  "description": "Recorded transcript: deployment run with three pinned operation rules, an interface definition, and a pending TODO (arXiv 2611.03223: rules pinned outside the compaction region).",
+  "rules": [
+    "constraint: never force-push the master branch",
+    "constraint: all deploys go through fusion-gateway port 11432",
+    "constraint: rotate credentials before every release tag"
+  ],
+  "task_markers": [
+    "constraint: never force-push the master branch",
+    "constraint: all deploys go through fusion-gateway port 11432",
+    "constraint: rotate credentials before every release tag",
+    "def deploy_service(config: dict) -> bool",
+    "TODO: bump KERNEL_VERSION before tagging v0.22.0"
+  ],
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are the release operator.\nconstraint: never force-push the master branch\nconstraint: all deploys go through fusion-gateway port 11432\nconstraint: rotate credentials before every release tag"
+    },
+    {
+      "role": "user",
+      "content": "Run the release checklist for fusion-harness.\nTODO: bump KERNEL_VERSION before tagging v0.22.0\nconstraint: never force-push the master branch"
+    },
+    {
+      "role": "assistant",
+      "content": "Starting checklist. The deploy entrypoint is:\ndef deploy_service(config: dict) -> bool\nIt posts the manifest to the gateway and polls health."
+    },
+    {
+      "role": "tool",
+      "content": "health check ok: gateway 11432 latency 41ms, mlx queue depth 0, disk 62% free, logs truncated for brevity in this recorded fixture line one of a long tool output"
+    },
+    {
+      "role": "user",
+      "content": "Checkpoint the checklist state: steps 1-4 done, step 5 pending review.\nconstraint: all deploys go through fusion-gateway port 11432"
+    },
+    {
+      "role": "tool",
+      "content": "trace block 000: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (seq 0, filler for volume)"
+    },
+    {
+      "role": "tool",
+      "content": "trace block 001: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (seq 1, filler for volume)"
+    },
+    {
+      "role": "tool",
+      "content": "trace block 002: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (seq 2, filler for volume)"
+    },
+    {
+      "role": "tool",
+      "content": "trace block 003: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (seq 3, filler for volume)"
+    },
+    {
+      "role": "tool",
+      "content": "trace block 004: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (seq 4, filler for volume)"
+    },
+    {
+      "role": "tool",
+      "content": "trace block 005: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (seq 5, filler for volume)"
+    },
+    {
+      "role": "user",
+      "content": "progress note 0: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (note 0)"
+    },
+    {
+      "role": "user",
+      "content": "progress note 1: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (note 1)"
+    },
+    {
+      "role": "assistant",
+      "content": "Checklist state recorded. Next: rotate credentials step.\nconstraint: rotate credentials before every release tag"
+    },
+    {
+      "role": "tool",
+      "content": "credential rotation dry-run complete: 3 secrets staged, 0 errors, audit id 8842, full diff omitted from this recorded transcript fixture"
+    },
+    {
+      "role": "user",
+      "content": "Confirm the release order before tagging.\nTODO: bump KERNEL_VERSION before tagging v0.22.0"
+    },
+    {
+      "role": "assistant",
+      "content": "Release order confirmed: version bump, tag, gateway deploy, smoke test.\ndef deploy_service(config: dict) -> bool is the final step."
+    }
+  ]
+}
