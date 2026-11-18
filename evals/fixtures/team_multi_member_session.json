@@ -1,0 +1,84 @@
+{
+  "name": "team-multi-member-session",
+  "description": "Recorded transcript: three team members coordinating over a shared task board; member messages interleave and the coordination rules must survive compaction.",
+  "rules": [
+    "constraint: members report done only with a receipt id",
+    "constraint: blocked tasks move back to queued within one turn"
+  ],
+  "task_markers": [
+    "constraint: members report done only with a receipt id",
+    "constraint: blocked tasks move back to queued within one turn",
+    "TODO: member-beta finishes schema migration before member-gamma starts ETL",
+    "def run_member(spec: dict, agent_fn: object) -> dict"
+  ],
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are the team coordinator.\nconstraint: members report done only with a receipt id\nconstraint: blocked tasks move back to queued within one turn"
+    },
+    {
+      "role": "user",
+      "content": "[member-alpha] Bootstrapped the workspace and pinned the plan:\ndef run_member(spec: dict, agent_fn: object) -> dict\nTODO: member-beta finishes schema migration before member-gamma starts ETL"
+    },
+    {
+      "role": "assistant",
+      "content": "[coordinator] Plan acknowledged, dependency recorded."
+    },
+    {
+      "role": "tool",
+      "content": "[member-beta] migration step 1 applied, 14 columns altered, recorded output chunk one with filler bulk for the compaction run to compress"
+    },
+    {
+      "role": "tool",
+      "content": "[member-gamma] waiting on schema, ETL deferred, recorded output chunk two with filler bulk for the compaction run to compress"
+    },
+    {
+      "role": "tool",
+      "content": "trace block 000: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (seq 0, filler for volume)"
+    },
+    {
+      "role": "tool",
+      "content": "trace block 001: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (seq 1, filler for volume)"
+    },
+    {
+      "role": "tool",
+      "content": "trace block 002: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (seq 2, filler for volume)"
+    },
+    {
+      "role": "tool",
+      "content": "trace block 003: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (seq 3, filler for volume)"
+    },
+    {
+      "role": "tool",
+      "content": "trace block 004: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (seq 4, filler for volume)"
+    },
+    {
+      "role": "tool",
+      "content": "trace block 005: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (seq 5, filler for volume)"
+    },
+    {
+      "role": "user",
+      "content": "progress note 0: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (note 0)"
+    },
+    {
+      "role": "user",
+      "content": "progress note 1: recorded output padding for the compaction evaluation fixture: the admission chain logged another verbose diagnostic block with timing, budget accounting, and audit receipt details that a real run produces in bulk and that the compactor is expected to stub out or summarize without losing pinned rules (note 1)"
+    },
+    {
+      "role": "user",
+      "content": "[member-beta] migration step 2 blocked on a locked table.\nconstraint: blocked tasks move back to queued within one turn"
+    },
+    {
+      "role": "assistant",
+      "content": "[coordinator] Task moved blocked to queued; retry window opened.\nconstraint: members report done only with a receipt id"
+    },
+    {
+      "role": "tool",
+      "content": "[member-beta] retry succeeded, receipt rcpt_7712, recorded output chunk three with filler bulk for the compaction run to compress"
+    },
+    {
+      "role": "user",
+      "content": "[member-gamma] ETL started against the migrated schema.\nTODO: member-beta finishes schema migration before member-gamma starts ETL"
+    }
+  ]
+}
