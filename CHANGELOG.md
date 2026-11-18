@@ -7,7 +7,7 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.20.0
+version: 0.22.0
 updated: 2026-11-18
 owner: "@dahai"
 source_of_truth:
@@ -15,6 +15,78 @@ source_of_truth:
 ---
 
 # Changelog
+
+## 0.22.0 (2026-11-18)
+
+Host-hardening gap batch — issues #72-#76, plus legacy-pool fix #81.
+
+### KV-cache hit-rate telemetry (issue #76)
+
+- `CacheTelemetry` on `LLMFunnel`: cached vs uncached input split from
+  provider usage payloads (OpenAI `prompt_tokens_details`, Anthropic
+  `cache_read_input_tokens`, generic `cached_tokens`), per-run and
+  aggregate hit rate, append-only prefix-stability counter with
+  diverge-index break events, `prefix_break` lifecycle event.
+
+### Checkpoint lineage fork (issue #74)
+
+- `CheckpointState.lineage_id` + `parent_checkpoint`;
+  `CheckpointStore.fork()` branches into a NEW lineage with an identical
+  state copy — the original stays resumable untouched. `fork_chain()`
+  walks root-first; `lineage_checkpoints()` queries the new column
+  (guarded `ALTER TABLE` migration for pre-lineage stores); `prune()`
+  never removes the lineage root.
+
+### Host-owned destructive approval gate (issue #73)
+
+- `destructive_gate.ApprovalGate`: table-driven destructive
+  classification; tool-server confirmation fields never authorize;
+  approval tokens ride the #66 queue, idempotent per call id,
+  single-redemption, replay across call ids rejected with telemetry;
+  `ToolFunnel` stage 2c denies destructive calls without a host grant.
+
+### Memory write gate + artifact scanning (issue #75)
+
+- `artifact_scan`: stdlib regex sets for prompt-injection and
+  credential-exfiltration patterns, persistent queryable quarantine,
+  untrusted-content stamping. `MemoryBridge` gates all memory writes
+  (flagged content stored stamped `origin=untrusted`, never silently
+  consolidated, never injected); `parse_skill` blocks flagged SKILL.md
+  bodies at load via `SkillScanError`.
+
+### Compact-Bench A/B eval gate (issue #72)
+
+- `evals/compact_bench.py` + three recorded fixture transcripts: same
+  task state scored full-history vs compacted against a deterministic
+  context-availability stub (zero model calls). CI gate fails on
+  task-success drop or rule-recall loss; seeded known-bad summarizer
+  proves the gate can fail.
+
+### Trajectory legacy-pool tolerance (issue #81)
+
+- `_adapt_cowork` falls back to `member` / `workflow` node scope for
+  legacy workflow-level events with empty `node_id`;
+  `TrajectoryReader(skip_corrupt=True)` skips bad lines with a warning
+  (default stays strict).
+
+## 0.21.0 (2026-11-18)
+
+HumanGate queue + JSON repair.
+
+### HumanGate generic pending-question queue (issue #66)
+
+- `HumanGate` doubles as a generic pending-question queue: `ask()`
+  gains `requester` + `ttl_s` (lazy expiry), `resolve()` is a
+  single-winner resolve that never raises, `list_questions()` filters by
+  status/requester/session. Daemon exposes list/resolve; agents block on
+  `wait()` (block policy) or poll `take_reply()` (continue policy).
+
+### Stdlib JSON-repair helper (issue #67)
+
+- `parse_repair(text)`: strict `json.loads` first, then a deterministic
+  repair ladder — markdown fences, balanced-span extraction from prose,
+  single- to double-quoted strings, trailing commas, truncated-output
+  completion. Exhaustion raises `JSONRepairError`; no silent wrong data.
 
 ## 0.20.0 (2026-11-18)
 
