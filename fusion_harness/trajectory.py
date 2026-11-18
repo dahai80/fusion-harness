@@ -270,6 +270,89 @@ class TrajectoryReader:
         return list(self.stream())
 
 
+# Issue #55 (F13): discardable-span annotation. Observation only — nothing
+# is dropped anywhere; fusion-mlx consumes the annotation once its engine
+# exposes the KV drop primitive (#1645).
+DISCARD_REASONS = ("stale_tool_output", "superseded_turn")
+
+
+def mark_discardable(record: TrajectoryRecord, reason: str) -> TrajectoryRecord:
+    """Return a copy of the record annotated as discardable with a reason.
+    Unknown reasons are rejected — the annotation is a contract, not a note."""
+    if reason not in DISCARD_REASONS:
+        raise TrajectorySchemaError(
+            "unknown discard reason: %s (allowed: %s)" % (reason, "|".join(DISCARD_REASONS))
+        )
+    payload = dict(record.payload)
+    payload["discardable"] = reason
+    return TrajectoryRecord(
+        run_id=record.run_id,
+        node_id=record.node_id,
+        member=record.member,
+        ts=record.ts,
+        event=record.event,
+        payload=payload,
+        duration_ms=record.duration_ms,
+        status=record.status,
+    )
+
+
+class PrefixStabilityTracker:
+    """Per-agent system/prefix stability ratio (issue #55, F14): how stable
+    the prompt head (system + first user turn) is across turns. harness
+    only reports — the fusion-mlx warm-list consumes the metric (its own
+    hot-prefix concentration threshold, >= 30%)."""
+
+    def __init__(self) -> None:
+        self._turns: Dict[str, int] = {}
+        self._stable: Dict[str, int] = {}
+        self._prefix: Dict[str, str] = {}
+
+    @staticmethod
+    def _prefix_key(system: str, first_user: str) -> str:
+        import hashlib
+
+        head = "%s\x00%s" % (system or "", first_user or "")
+        return hashlib.sha1(head.encode("utf-8")).hexdigest()
+
+    def observe(self, agent_id: str, system: str, first_user: str) -> None:
+        key = self._prefix_key(system, first_user)
+        self._turns[agent_id] = self._turns.get(agent_id, 0) + 1
+        prev = self._prefix.get(agent_id)
+        if prev is not None:
+            # First turn establishes the baseline; only later turns compare.
+            if prev == key:
+                self._stable[agent_id] = self._stable.get(agent_id, 0) + 1
+        self._prefix[agent_id] = key
+
+    def observe_messages(self, agent_id: str, messages: list) -> None:
+        system = ""
+        first_user = ""
+        for m in messages or []:
+            role = m.get("role")
+            content = m.get("content") or ""
+            if role == "system" and not system:
+                system = content
+            elif role == "user" and not first_user:
+                first_user = content
+            if system and first_user:
+                break
+        self.observe(agent_id, system, first_user)
+
+    def stability(self, agent_id: str) -> float:
+        turns = self._turns.get(agent_id, 0)
+        if turns <= 1:
+            return 0.0
+        return self._stable.get(agent_id, 0) / (turns - 1)
+
+    def report(self) -> Dict[str, Dict[str, float]]:
+        """Per-agent metric: {"agent": {"stability": ratio, "turns": n}}."""
+        return {
+            agent: {"stability": round(self.stability(agent), 4), "turns": self._turns[agent]}
+            for agent in sorted(self._turns)
+        }
+
+
 __all__ = [
     "EVENTS",
     "SCHEMA_VERSION",
@@ -279,4 +362,7 @@ __all__ = [
     "TrajectoryReader",
     "normalize_record",
     "register_legacy_mapping",
+    "DISCARD_REASONS",
+    "mark_discardable",
+    "PrefixStabilityTracker",
 ]
