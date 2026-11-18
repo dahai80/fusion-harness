@@ -61,6 +61,14 @@ from fusion_harness.trajectory import (
     TrajectoryWriter,
     normalize_record,
 )
+from fusion_harness.handoff_verify import (
+    HandoffVerifyError,
+    HandoffVerification,
+    claims_for_transport,
+    ledger_for_transport,
+    verify_handoff,
+    verify_spawn_brief,
+)
 from fusion_harness.code_mode import (
     CODE_MODE_SYSTEM_PROMPT,
     CodeExecutor,
@@ -184,6 +192,8 @@ __all__ = [
     "HookConfig",
     "HookEngine",
     "HookResult",
+    "HandoffVerifyError",
+    "HandoffVerification",
     "LLMFunnel",
     "ExecutionTier",
     "MemoryBridge",
@@ -286,6 +296,10 @@ __all__ = [
     "render_stubs",
     "run_with_retry",
     "score_tool_risk",
+    "claims_for_transport",
+    "ledger_for_transport",
+    "verify_handoff",
+    "verify_spawn_brief",
     "read_segment",
     "render_segment_result",
     "segment_header",

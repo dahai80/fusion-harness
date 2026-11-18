@@ -304,6 +304,9 @@ class PermissionEngine:
             "denies": 0,
             "rule_hits": 0,
         }
+        # Handoff verification (issue #53): every evaluate() outcome is
+        # recorded so the receiver can replay the sender's ledger.
+        self._ledger: list[dict] = []
         for rule in rules or []:
             self.add_rule(rule, layer=rule.layer)
         try:
@@ -375,8 +378,20 @@ class PermissionEngine:
         decision = self._evaluate_rules(tool_name, args, ctx, readonly_hint)
         policy = self.confirmation_policy
         if policy is None or self.mode == PermissionMode.BYPASS:
+            self._record_ledger(tool_name, decision.decision, decision.reason)
             return decision
-        return self._apply_confirmation(policy, decision, tool_name, args, can_confirm)
+        final = self._apply_confirmation(policy, decision, tool_name, args, can_confirm)
+        self._record_ledger(tool_name, final.decision, final.reason)
+        return final
+
+    def _record_ledger(self, tool_name: str, decision: str, reason: str) -> None:
+        self._ledger.append(
+            {"tool": tool_name, "decision": decision, "reason": reason, "ts": time.time()}
+        )
+
+    def export_ledger(self) -> list[dict]:
+        """Sender side: the segment handed to a receiver on handoff."""
+        return list(self._ledger)
 
     def _apply_confirmation(
         self,
