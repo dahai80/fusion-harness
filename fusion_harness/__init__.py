@@ -4,6 +4,12 @@ Extracted from fusion-agent-studio N0 kernel (#357). Pure stdlib, no deps.
 Consumers: fusion-agent-studio (shim import), fusion-cowork, fusion-code.
 """
 
+from fusion_harness.artifact_scan import (
+    ArtifactQuarantine,
+    ScanReport,
+    scan_artifact,
+    stamp_untrusted,
+)
 from fusion_harness.checkpoint import CheckpointError, CheckpointState, CheckpointStore
 from fusion_harness.destructive_gate import (
     TOOL_DESTRUCTIVE_TABLE,
@@ -133,6 +139,7 @@ from fusion_harness.skills import (
     SkillCase,
     SkillError,
     SkillLibrary,
+    SkillScanError,
     SkillRegistry,
     SkillVersion,
     parse_skill,
@@ -192,6 +199,8 @@ __all__ = [
     "KERNEL_VERSION",
     "CompactionConfig",
     "Compactor",
+    "ArtifactQuarantine",
+    "ScanReport",
     "CheckpointError",
     "CheckpointState",
     "TOOL_DESTRUCTIVE_TABLE",
@@ -213,6 +222,7 @@ __all__ = [
     "Skill",
     "SkillCase",
     "SkillError",
+    "SkillScanError",
     "SkillLibrary",
     "SkillRegistry",
     "SkillVersion",
@@ -349,6 +359,8 @@ __all__ = [
     "DanglingLinkError",
     "JSONRepairError",
     "parse_repair",
+    "scan_artifact",
+    "stamp_untrusted",
     "cite_link",
     "extract_links",
     "rehydrate",
