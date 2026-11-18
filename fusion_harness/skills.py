@@ -13,6 +13,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from fusion_harness.artifact_scan import scan_artifact
+
 logger = logging.getLogger(__name__)
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
@@ -41,10 +43,21 @@ class SkillError(Exception):
     pass
 
 
+class SkillScanError(SkillError):
+    """Skill body flagged by the #75 pre-load artifact scan (injection or
+    credential-exfiltration pattern). Blocked at load; findings attribute
+    surfaces the signal to the #54 four-gate pipeline."""
+
+    def __init__(self, message: str, findings=None) -> None:
+        super().__init__(message)
+        self.findings = list(findings or [])
+
+
 def parse_skill(text: str, source: str = "") -> Skill:
     """Parse SKILL.md content: `---` frontmatter (name/description/permissions)
     then body. Fail-closed: missing name or malformed permission lines reject
-    the skill at load."""
+    the skill at load; injection/exfiltration patterns in the body block the
+    load (issue #75) with the scan signal carried on SkillScanError.findings."""
     match = _FRONTMATTER_RE.match(text)
     front: Dict[str, Any] = {}
     body = text
@@ -61,6 +74,18 @@ def parse_skill(text: str, source: str = "") -> Skill:
     name = str(front.get("name") or "").strip()
     if not name:
         raise SkillError("skill missing name: %s" % (source or "<inline>"))
+    report = scan_artifact(text, source=source or name, kind="skill")
+    if not report.clean:
+        logger.error(
+            "skill blocked at load name=%s source=%s rules=%s",
+            name,
+            source,
+            ",".join(report.rule_names()),
+        )
+        raise SkillScanError(
+            "skill %s blocked by artifact scan: %s" % (name, ",".join(report.rule_names())),
+            findings=report.findings,
+        )
     description = str(front.get("description") or "").strip()
     grant = _parse_grant(front.get("permissions") or "", source)
     skill = Skill(name=name, description=description, body=body.strip(), grant=grant, source=source)
