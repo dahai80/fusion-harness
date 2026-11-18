@@ -108,7 +108,9 @@ from fusion_harness.human_gate import (
     validate_reply,
 )
 from fusion_harness.team_runtime import (
+    MEMBER_CONTEXT_CAP_BYTES,
     MSG_TYPES,
+    TEAM_SPEC_CAP_BYTES,
     TeamMessage,
     TeamMessageError,
     TeamRuntime,
@@ -178,7 +180,7 @@ from fusion_harness.policies import (
     run_with_retry,
 )
 
-KERNEL_VERSION = "0.18.0"
+KERNEL_VERSION = "0.19.0"
 
 __all__ = [
     "KERNEL_VERSION",
@@ -251,7 +253,9 @@ __all__ = [
     "TeamMessage",
     "TeamStateError",
     "TeamMessageError",
+    "MEMBER_CONTEXT_CAP_BYTES",
     "MSG_TYPES",
+    "TEAM_SPEC_CAP_BYTES",
     "BaseNode",
     "NodeContext",
     "NodeRegistry",

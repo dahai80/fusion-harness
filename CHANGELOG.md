@@ -7,7 +7,7 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.18.0
+version: 0.19.0
 updated: 2026-11-18
 owner: "@dahai"
 source_of_truth:
@@ -15,6 +15,34 @@ source_of_truth:
 ---
 
 # Changelog
+
+## 0.19.0 (2026-11-18)
+
+### Team member context — resident context + SPEC.md injection (issue #61)
+
+- `TeamMember` gains `context: str = ""` — resident per-member knowledge
+  passed via `teams.register`; no filesystem semantics (team members are
+  in-process `SubagentRunner` runs: no cwd, no AGENTS.md load, so role
+  knowledge was previously lost across rounds).
+- `TeamRuntime.run_member` now assembles the member prompt before
+  dispatch, prepending two sections ahead of `brief.objective`:
+  - `[team spec]` — contents of `<state_dir>/SPEC.md`, truncated at 4KB
+    (console AGENTS.md cap convention), with the absolute path appended
+    so a member whose allowlist includes `file_read` can pull the full
+    file; the file is re-read on every dispatch, so SPEC edits apply to
+    the next member brief without restart.
+  - `[member context]` — the member's resident `context` field,
+    truncated at 2KB.
+- Graceful degradation: a missing SPEC.md is skipped silently; empty
+  sections are omitted (prompt unchanged when both absent); members
+  whose `tool_allowlist` lacks `file_read` still get the injected text
+  — injection never errors.
+- Boundary rulings respected: all team semantics assemble in
+  `TeamRuntime.run_member`; `SubagentRunner` is untouched (plain
+  subagent spawns unaffected); dispatch stays leader-driven (phase-2
+  member self-claim will reuse the same assembly line).
+
+Tests: 503 → 516 (13 new). All stdlib, no new dependencies.
 
 ## 0.18.0 (2026-11-18)
 
