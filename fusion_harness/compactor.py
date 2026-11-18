@@ -108,12 +108,17 @@ class Compactor:
         memory_engine=None,
         lifecycle_bus=None,
         hooks=None,
+        archive=None,
     ):
         self.config = config or CompactionConfig()
         self.llm_gateway = llm_gateway
         self.memory_engine = memory_engine
         self.lifecycle_bus = lifecycle_bus
         self.hooks = hooks
+        # Compaction v2 (issue #52): optional immutable base archive —
+        # evicted content is appended there and cited by resolvable link;
+        # the archive is never mutated by compaction, only appended to.
+        self.archive = archive
         self._counter = self.config.token_counter or HeuristicTokenCounter()
 
     def _persist_summary(self, summary: str, original_count: int) -> None:
@@ -364,9 +369,16 @@ class Compactor:
                 call_id = str(m.get("tool_call_id") or "")
                 first_line = content.splitlines()[0] if content else ""
                 citation = f"; {first_line}" if first_line.startswith("[segment file=") else ""
+                link_ref = ""
+                if self.archive is not None:
+                    try:
+                        (link,) = self.archive.append([m])
+                        link_ref = f" {link}"
+                    except Exception as exc:
+                        logger.warning("archive append failed: %s — clearing without link", exc)
                 r[i] = {
                     **m,
-                    "content": f"{_CLEARED_STUB_PREFIX} id={call_id} bytes={len(content)}{citation}]",
+                    "content": f"{_CLEARED_STUB_PREFIX} id={call_id} bytes={len(content)}{citation}{link_ref}]",
                 }
                 cleared += 1
         if cleared:
