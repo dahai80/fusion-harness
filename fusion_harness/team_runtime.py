@@ -10,11 +10,13 @@ Single member failure never cancels siblings (ParallelTeam precedent).
 import json
 import logging
 import os
+import re
 import threading
 import uuid
 from dataclasses import asdict, dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
+from fusion_harness.session_log import SessionEventLog
 from fusion_harness.spawn_protocol import SpawnBrief, brief_from_event
 from fusion_harness.subagent import SubagentResult, SubagentRunner, SubagentSpec
 from fusion_harness.team import TeamDefError, TeamDefinition, TeamMember
@@ -23,6 +25,24 @@ logger = logging.getLogger(__name__)
 
 TEAM_SPEC_CAP_BYTES = 4096
 MEMBER_CONTEXT_CAP_BYTES = 2048
+
+# Issue #63: per-run event stream event types (tool_* come from session_log).
+RUN_STREAM_DIR = "runs"
+
+_REDACT_KEYS = (
+    "secret",
+    "token",
+    "password",
+    "passwd",
+    "api_key",
+    "apikey",
+    "authorization",
+    "credential",
+    "private_key",
+)
+_REDACT_VALUE_RE = re.compile(
+    r"(?i)\b([\w.-]*(?:secret|token|password|passwd|api[_-]?key|credential)[\w.-]*\s*[=:]\s*)(\S+)"
+)
 
 MSG_TYPES = ("text", "plan_approval", "shutdown_request", "shutdown_response")
 _TASK_TRANSITIONS = {
@@ -48,6 +68,27 @@ class TeamStateError(RuntimeError):
 
 class TeamMessageError(ValueError):
     """Malformed mailbox message."""
+
+
+def _redact(obj: Any) -> Any:
+    """Issue #63 redaction: secret-looking values inside commands and tool
+    args become `***` before anything is written to the run stream. Two
+    passes: sensitive key names redact the whole value; embedded
+    `KEY=value` / `KEY: value` patterns inside string values redact the
+    value part only."""
+    if isinstance(obj, dict):
+        out = {}
+        for key, value in obj.items():
+            if isinstance(key, str) and any(marker in key.lower() for marker in _REDACT_KEYS):
+                out[key] = "***"
+            else:
+                out[key] = _redact(value)
+        return out
+    if isinstance(obj, list):
+        return [_redact(item) for item in obj]
+    if isinstance(obj, str):
+        return _REDACT_VALUE_RE.sub(lambda m: "%s***" % m.group(1), obj)
+    return obj
 
 
 @dataclass
@@ -210,6 +251,47 @@ class TeamRuntime:
 
     # ---------- member execution ----------
 
+    def _runs_dir(self, task_id: str) -> str:
+        return os.path.join(self.state_dir, RUN_STREAM_DIR, task_id)
+
+    def _next_attempt(self, task_id: str) -> int:
+        try:
+            names = os.listdir(self._runs_dir(task_id))
+        except OSError:
+            return 1
+        attempts = []
+        for name in names:
+            if name.endswith(".jsonl") and name[:-6].isdigit():
+                attempts.append(int(name[:-6]))
+        return (max(attempts) + 1) if attempts else 1
+
+    def _open_run_stream(self, task_id: str, attempt: int) -> Optional[SessionEventLog]:
+        """Issue #63: one JSONL per run at <state_dir>/runs/<task_id>/<attempt>.jsonl.
+        The stream's session_id is the attempt number (the JSONL filename
+        convention of SessionEventLog); task_id/member/team ride every
+        event payload. A stream that cannot be opened never fails the run."""
+        try:
+            os.makedirs(self._runs_dir(task_id), exist_ok=True)
+            return SessionEventLog(session_id=str(attempt), log_dir=self._runs_dir(task_id))
+        except OSError as exc:
+            logger.warning("run stream open failed task=%s err=%s", task_id, exc)
+            return None
+
+    def _usage_snapshot(self, session: "Any") -> Dict[str, int]:
+        """run_finished usage straight from the funnel ledger (tolerance 0
+        against funnels totals — no re-aggregation). Falls back to the
+        session counter when no ledger is wired."""
+        ledger = getattr(session, "ledger", None)
+        if ledger is not None:
+            bal = ledger.balance(scope=getattr(session, "subagent_id", None))
+            return {
+                "prompt_tokens": int(bal.get("prompt_tokens", 0)),
+                "completion_tokens": int(bal.get("completion_tokens", 0)),
+                "reasoning_tokens": int(bal.get("reasoning_tokens", 0)),
+                "total_tokens": int(bal.get("total_tokens", 0)),
+            }
+        return {"total_tokens": int(getattr(session, "tokens_spent", 0))}
+
     @staticmethod
     def _truncate_utf8(text: str, cap: int) -> str:
         data = text.encode("utf-8")[:cap]
@@ -276,8 +358,52 @@ class TeamRuntime:
                 "team": self.definition.name,
             },
         )
+        attempt = self._next_attempt(task_id)
+        stream = self._open_run_stream(task_id, attempt)
+        base_payload = {
+            "task_id": task_id,
+            "member": member.name,
+            "team": self.definition.name,
+            "attempt": attempt,
+        }
+        if stream is not None:
+            stream.append("run_started", dict(base_payload))
+            stream.append("prompt", {**base_payload, "text": prompt})
         self._emit("team.member.started", {"member": member.name, "task_id": task_id})
-        result = await self.runner.run(spec, agent_fn)
+
+        def _sink(event_type: str, payload: dict) -> None:
+            if stream is not None:
+                stream.append(event_type, {**base_payload, **_redact(payload)})
+
+        captured: Dict[str, Any] = {}
+
+        async def _wrapped(spec, session):
+            captured["session"] = session
+            return await agent_fn(spec, session)
+
+        result = await self.runner.run(spec, _wrapped, event_sink=_sink)
+        if stream is not None:
+            session = captured.get("session")
+            stream.append(
+                "final",
+                {
+                    **base_payload,
+                    "status": result.status,
+                    "summary": result.summary[:500],
+                    "error": result.error,
+                },
+            )
+            stream.append(
+                "run_finished",
+                {
+                    **base_payload,
+                    "status": result.status,
+                    "usage": self._usage_snapshot(session)
+                    if session is not None
+                    else {"total_tokens": result.tokens_spent},
+                },
+            )
+            stream.close()
         task = self._require_task(task_id)
         results = task.metadata.setdefault("results", [])
         results.append(

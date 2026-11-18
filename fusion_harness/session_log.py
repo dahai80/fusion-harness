@@ -31,6 +31,12 @@ _DURABLE_EVENT_TYPES = (
     "tool_result",
     "tool_error",
     "compaction",
+    # Team run streams (issue #63): one JSONL per team member run. The
+    # reducer treats these as preserved-but-unreduced, same as unknowns.
+    "run_started",
+    "prompt",
+    "final",
+    "run_finished",
 )
 
 

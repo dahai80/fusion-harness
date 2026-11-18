@@ -47,7 +47,7 @@ def _capture_runtime(tmp_path, member):
     tid = rt.add_task(TeamTask(title="t"))
     captured = {}
 
-    async def fake_run(spec, agent_fn):
+    async def fake_run(spec, agent_fn, event_sink=None):
         captured["prompt"] = spec.prompt
         return SubagentResult(
             subagent_id="s1", name=member.name, status="completed", summary="done"
