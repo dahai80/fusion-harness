@@ -73,6 +73,7 @@ class SubagentSession:
     max_turns: int = 20
     turns: int = 0
     tokens_spent: int = 0
+    event_sink: Any = None
     _violations: List[str] = field(default_factory=list)
 
     def record_turn(self, tokens: int = 0) -> str:
@@ -101,6 +102,17 @@ class SubagentSession:
     def check_tool(self, tool_name: str) -> bool:
         """Tool-surface check: the child may only use its allowlist."""
         return tool_name in self.allowed_tools
+
+    def log_event(self, event_type: str, payload: dict | None = None) -> None:
+        """Optional run-stream recording (issue #63): forwards to the
+        wired sink when the caller (e.g. TeamRuntime.run_member) attached
+        one; a plain subagent spawn has no sink and this is a no-op."""
+        if self.event_sink is None:
+            return
+        try:
+            self.event_sink(event_type, dict(payload or {}))
+        except Exception as exc:
+            logger.warning("run event sink failed type=%s: %s", event_type, exc)
 
     @property
     def violations(self) -> List[str]:
@@ -180,6 +192,7 @@ class SubagentRunner:
         agent_fn: AgentFn,
         parent_tools: Optional[List[str]] = None,
         parent_mode: str = "default",
+        event_sink: Any = None,
     ) -> SubagentResult:
         self._counter += 1
         subagent_id = "subagent-%d" % self._counter
@@ -193,6 +206,7 @@ class SubagentRunner:
             budget_tokens=spec.budget_tokens,
             ledger=self.ledger_factory() if self.ledger_factory else None,
             max_turns=spec.max_turns,
+            event_sink=event_sink,
         )
         started = self._clock()
         self._emit("subagent_start", {"subagent_id": subagent_id, "name": spec.name, "mode": mode})
