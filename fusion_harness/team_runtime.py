@@ -45,6 +45,7 @@ _REDACT_VALUE_RE = re.compile(
 )
 
 MSG_TYPES = ("text", "plan_approval", "shutdown_request", "shutdown_response")
+_TASK_STATUSES = ("todo", "queued", "in_progress", "blocked", "done", "cancelled")
 _TASK_TRANSITIONS = {
     ("todo", "in_progress"),
     ("in_progress", "done"),
@@ -52,7 +53,15 @@ _TASK_TRANSITIONS = {
     ("in_progress", "blocked"),
     ("blocked", "in_progress"),
     ("blocked", "done"),
+    # Wakeup rules (issue #65): a fired wakeup returns a blocked task to
+    # the lead's pick pool; an `end` timeout cancels it.
+    ("blocked", "queued"),
+    ("queued", "in_progress"),
+    ("blocked", "cancelled"),
 }
+WAKEUP_CAP_PER_TASK = 8
+_WAKEUP_KINDS = ("at", "every")
+_WAKEUP_TIMEOUT_ACTIONS = ("wake", "end")
 _LIFECYCLE_EDGES = {
     ("DEFINED", "ACTIVE"),
     ("ACTIVE", "PAUSED"),
@@ -106,7 +115,7 @@ class TeamTask:
     def __post_init__(self) -> None:
         if not self.title or not isinstance(self.title, str):
             raise TeamStateError("task title required")
-        if self.status not in ("todo", "in_progress", "blocked", "done"):
+        if self.status not in _TASK_STATUSES:
             raise TeamStateError("unknown task status: %s" % self.status)
 
 
@@ -214,7 +223,9 @@ class TeamRuntime:
         self._emit("team.task.added", {"task_id": task.id, "title": task.title})
         return task.id
 
-    def transition_task(self, task_id: str, target: str, blocked_by: List[str] = None) -> None:
+    def transition_task(
+        self, task_id: str, target: str, blocked_by: List[str] = None, reason: str = ""
+    ) -> None:
         self._require_active()
         task = self._require_task(task_id)
         if (task.status, target) not in _TASK_TRANSITIONS:
@@ -226,6 +237,8 @@ class TeamRuntime:
         task.status = target
         if blocked_by is not None:
             task.blocked_by = list(blocked_by)
+        if reason:
+            task.metadata["cancel_reason"] = reason
         self._emit("team.task.status", {"task_id": task_id, "status": target})
 
     def claim_task(self, task_id: str, member_name: str) -> bool:
@@ -248,7 +261,20 @@ class TeamRuntime:
         task = self._tasks.get(task_id)
         if task is None:
             raise TeamStateError("unknown task: %s" % task_id)
+        self._prune_expired_wakeups(task)
         return task
+
+    def _prune_expired_wakeups(self, task: TeamTask) -> None:
+        """Lazy prune (issue #65): expired rules drop on task read — no
+        separate sweeper, no new retention policy."""
+        rules = task.metadata.get("wakeups")
+        if not rules:
+            return
+        now = self._clock()
+        kept = [r for r in rules if r.get("expires_at") is None or r["expires_at"] > now]
+        if len(kept) != len(rules):
+            logger.info("wakeups pruned task=%s removed=%d", task.id, len(rules) - len(kept))
+            task.metadata["wakeups"][:] = kept
 
     # ---------- member execution ----------
 
@@ -451,6 +477,107 @@ class TeamRuntime:
         queue.put_nowait("[steer] %s: %s" % (prefix, content.strip()))
         logger.info("steer queued task=%s origin=%s", task_id, origin)
         return True
+
+    # ---------- task wakeup rules (issue #65) ----------
+
+    def _armed_wakeups(self, task: TeamTask, now: float) -> List[Dict[str, Any]]:
+        rules = [r for r in task.metadata.get("wakeups", []) if not r.get("fired")]
+        return [r for r in rules if r.get("expires_at") is None or r["expires_at"] > now]
+
+    def add_wakeup(self, task_id: str, rule: Dict[str, Any]) -> Dict[str, Any]:
+        """Store a task-level wakeup rule in task.metadata["wakeups"].
+        v1 validates kind/at/every/expires semantics; `on_event` conditions
+        are explicitly phase 2 and rejected here. Cap: 8 armed rules per
+        task, enforced at this runtime boundary."""
+        self._require_active()
+        task = self._require_task(task_id)
+        if not isinstance(rule, dict):
+            raise TeamStateError("wakeup rule must be a dict")
+        if "on_event" in rule:
+            raise TeamStateError("on_event wakeup conditions are phase 2 (v1 rejects them)")
+        kind = rule.get("kind")
+        if kind not in _WAKEUP_KINDS:
+            raise TeamStateError("wakeup kind must be 'at' or 'every': %r" % (kind,))
+        if kind == "at" and not isinstance(rule.get("at"), (int, float)):
+            raise TeamStateError("wakeup kind 'at' requires a numeric 'at' epoch")
+        if kind == "every" and (
+            not isinstance(rule.get("every"), (int, float)) or rule["every"] <= 0
+        ):
+            raise TeamStateError("wakeup kind 'every' requires a positive numeric 'every'")
+        action = rule.get("on_timeout", "wake")
+        if action not in _WAKEUP_TIMEOUT_ACTIONS:
+            raise TeamStateError("on_timeout must be 'wake' or 'end': %r" % (action,))
+        expires_at = rule.get("expires_at")
+        if expires_at is not None and not isinstance(expires_at, (int, float)):
+            raise TeamStateError("expires_at must be numeric or absent")
+        now = self._clock()
+        if len(self._armed_wakeups(task, now)) >= WAKEUP_CAP_PER_TASK:
+            raise TeamStateError(
+                "wakeup cap reached: %d armed rules per task (task=%s)"
+                % (WAKEUP_CAP_PER_TASK, task_id)
+            )
+        seq = task.metadata.setdefault("wakeup_seq", 0) + 1
+        task.metadata["wakeup_seq"] = seq
+        stored = {
+            "wake_id": "wk_%d" % seq,
+            "kind": kind,
+            "on_timeout": action,
+            "expires_at": expires_at,
+            "created": now,
+            "fired": False,
+            "last_fired": None,
+        }
+        if kind == "at":
+            stored["at"] = float(rule["at"])
+        else:
+            stored["every"] = float(rule["every"])
+        task.metadata.setdefault("wakeups", []).append(stored)
+        logger.info("wakeup added task=%s id=%s kind=%s", task_id, stored["wake_id"], kind)
+        self._emit(
+            "team.wakeup.added", {"task_id": task_id, "wake_id": stored["wake_id"], "kind": kind}
+        )
+        return dict(stored)
+
+    def check_wakeups(self, task_id: str, now: float = None) -> List[Dict[str, Any]]:
+        """Fire due wakeups for a task: an `at` rule fires exactly once; an
+        `every` rule refires on its interval. `wake` action moves a blocked
+        task back to queued (the lead's pick pool); `end` action cancels
+        with reason wakeup_timeout. Returns the fired-event list."""
+        self._require_active()
+        task = self._require_task(task_id)
+        now = self._clock() if now is None else now
+        fired = []
+        for rule in list(task.metadata.get("wakeups", [])):
+            if rule.get("fired") or not self._wakeup_due(rule, now):
+                continue
+            action = rule.get("on_timeout", "wake")
+            if action == "end" and task.status == "blocked":
+                self.transition_task(task_id, "cancelled", reason="wakeup_timeout")
+            elif action == "wake" and task.status == "blocked":
+                self.transition_task(task_id, "queued")
+            if rule["kind"] == "at":
+                rule["fired"] = True
+            rule["last_fired"] = now
+            fired.append({"wake_id": rule["wake_id"], "action": action})
+            logger.info(
+                "wakeup fired task=%s id=%s action=%s status=%s",
+                task_id,
+                rule["wake_id"],
+                action,
+                task.status,
+            )
+        if fired:
+            self._emit("team.wakeup.fired", {"task_id": task_id, "fired": fired})
+        return fired
+
+    @staticmethod
+    def _wakeup_due(rule: Dict[str, Any], now: float) -> bool:
+        if rule.get("expires_at") is not None and rule["expires_at"] <= now:
+            return False
+        if rule["kind"] == "at":
+            return now >= rule["at"]
+        anchor = rule.get("last_fired") if rule.get("last_fired") is not None else rule["created"]
+        return now >= anchor + rule["every"]
 
     # ---------- mailbox ----------
 
