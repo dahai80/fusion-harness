@@ -74,6 +74,7 @@ class SubagentSession:
     turns: int = 0
     tokens_spent: int = 0
     event_sink: Any = None
+    steer_queue: Any = None
     _violations: List[str] = field(default_factory=list)
 
     def record_turn(self, tokens: int = 0) -> str:
@@ -113,6 +114,28 @@ class SubagentSession:
             self.event_sink(event_type, dict(payload or {}))
         except Exception as exc:
             logger.warning("run event sink failed type=%s: %s", event_type, exc)
+
+    def drain_steers(self) -> List[str]:
+        """Mid-run steering (issue #64): drain the supplement queue. The
+        member loop calls this ONLY at AgentGraph node boundaries — never
+        between a tool call and its result. Each drained note is recorded
+        to the run stream as a `steer` event. No queue (plain spawn) or
+        empty queue returns []."""
+        if self.steer_queue is None:
+            return []
+        import asyncio
+
+        notes = []
+        while True:
+            try:
+                notes.append(self.steer_queue.get_nowait())
+            except asyncio.QueueEmpty:
+                break
+        for note in notes:
+            self.log_event("steer", {"text": note})
+        if notes:
+            logger.info("steers drained count=%d", len(notes))
+        return notes
 
     @property
     def violations(self) -> List[str]:
@@ -193,6 +216,7 @@ class SubagentRunner:
         parent_tools: Optional[List[str]] = None,
         parent_mode: str = "default",
         event_sink: Any = None,
+        steer_queue: Any = None,
     ) -> SubagentResult:
         self._counter += 1
         subagent_id = "subagent-%d" % self._counter
@@ -207,6 +231,7 @@ class SubagentRunner:
             ledger=self.ledger_factory() if self.ledger_factory else None,
             max_turns=spec.max_turns,
             event_sink=event_sink,
+            steer_queue=steer_queue,
         )
         started = self._clock()
         self._emit("subagent_start", {"subagent_id": subagent_id, "name": spec.name, "mode": mode})
