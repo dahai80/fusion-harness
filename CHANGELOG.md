@@ -7,14 +7,45 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.16.1
-updated: 2026-11-17
+version: 0.17.0
+updated: 2026-11-18
 owner: "@dahai"
 source_of_truth:
   - CHANGELOG.md
 ---
 
 # Changelog
+
+## 0.17.0 (2026-11-18)
+
+### Code-mode tool executor (issue #50, ports fusion-mlx M10)
+
+- `fusion_harness.code_mode`: prompt-side code-mode transform against any
+  OpenAI-compatible backend — `render_stubs(tools)` renders the registry
+  as a Python stub module with signatures + return-shape hints (pydantic
+  inputs normalized via model_dump, M10 #1644 gotcha; parity snapshot test
+  vs the fusion-mlx renderer, cross-repo manual trigger not a dependency),
+  `parse_code_block` extracts fenced python blocks, `inject_code_mode_
+  messages` merges prompt + stubs into the leading system message.
+- `CodeExecutor` protocol: harness defines the contract, execution
+  backends implement it — harness never runs code itself. Two stub
+  renderers coexist by design (harness is stdlib-only, fusion-mlx cannot
+  depend on harness).
+- `CodeModeTurn`: parse → stub-name mapping (unknown function names
+  rejected, mapping strictly bound) → permission admission → execute →
+  traceback loop (execution exceptions feed back as the next message for
+  self-repair, bounded by max_iterations). Ruled allowlist semantics
+  (decision 2026-11-18): the script as a whole passes the permission
+  engine in ONE admission pass — every called stub must be allowed,
+  unmatched tools evaluate to "ask" in an armed engine and deny, no
+  per-stub execution interception; engine errors fail closed. Budget:
+  turn refuses when the wired budget_ref reports exceeded (existing
+  funnel policy); telemetry events carry the `code` dtype axis.
+- `CodeModeMetrics`: dual metric reporting aligned with M15 —
+  elicitation (token savings) and expansion (task success rate)
+  reported separately, never conflated. 30-turn synthetic trajectory
+  replay test lands inside the paper's 70-90% band.
+- 33 new tests; suite 420 → 453.
 
 ## 0.16.1 (2026-11-17)
 

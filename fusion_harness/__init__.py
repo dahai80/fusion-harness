@@ -61,6 +61,18 @@ from fusion_harness.trajectory import (
     TrajectoryWriter,
     normalize_record,
 )
+from fusion_harness.code_mode import (
+    CODE_MODE_SYSTEM_PROMPT,
+    CodeExecutor,
+    CodeModeError,
+    CodeModeMetrics,
+    CodeModeTurn,
+    CodeModeTurnResult,
+    UnknownStubError,
+    inject_code_mode_messages,
+    parse_code_block,
+    render_stubs,
+)
 from fusion_harness.file_segment import (
     DEFAULT_MAX_BYTES_CAP,
     SegmentBudget,
@@ -137,7 +149,7 @@ from fusion_harness.policies import (
     run_with_retry,
 )
 
-KERNEL_VERSION = "0.16.1"
+KERNEL_VERSION = "0.17.0"
 
 __all__ = [
     "KERNEL_VERSION",
@@ -145,6 +157,12 @@ __all__ = [
     "Compactor",
     "CheckpointState",
     "CheckpointStore",
+    "CODE_MODE_SYSTEM_PROMPT",
+    "CodeExecutor",
+    "CodeModeError",
+    "CodeModeMetrics",
+    "CodeModeTurn",
+    "CodeModeTurnResult",
     "ConfirmationPolicy",
     "CJKAwareHeuristicTokenCounter",
     "Skill",
@@ -260,8 +278,12 @@ __all__ = [
     "ToolPipeline",
     "ToolResult",
     "TransientError",
+    "UnknownStubError",
     "coalesce_retry",
     "idempotency_key",
+    "inject_code_mode_messages",
+    "parse_code_block",
+    "render_stubs",
     "run_with_retry",
     "score_tool_risk",
     "read_segment",
