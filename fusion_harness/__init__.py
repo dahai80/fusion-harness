@@ -107,7 +107,18 @@ from fusion_harness.team_runtime import (
 )
 from fusion_harness.sandbox import ExecutionTier, SandboxPolicy, SandboxRunner, map_risk_to_tier
 from fusion_harness.security_intel import RiskIntel, RiskIntelClient
-from fusion_harness.skills import Skill, SkillError, SkillRegistry, parse_skill
+from fusion_harness.skills import (
+    STATUS_ACTIVE,
+    STATUS_ARCHIVED,
+    STATUS_CANARY,
+    Skill,
+    SkillCase,
+    SkillError,
+    SkillLibrary,
+    SkillRegistry,
+    SkillVersion,
+    parse_skill,
+)
 from fusion_harness.subagent import SubagentResult, SubagentRunner, SubagentSession, SubagentSpec
 from fusion_harness.pipeline import (
     MonotonicGuard,
@@ -173,9 +184,15 @@ __all__ = [
     "CodeModeTurnResult",
     "ConfirmationPolicy",
     "CJKAwareHeuristicTokenCounter",
+    "STATUS_ACTIVE",
+    "STATUS_ARCHIVED",
+    "STATUS_CANARY",
     "Skill",
+    "SkillCase",
     "SkillError",
+    "SkillLibrary",
     "SkillRegistry",
+    "SkillVersion",
     "SubagentResult",
     "SubagentRunner",
     "BackgroundPool",

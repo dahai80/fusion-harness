@@ -9,6 +9,7 @@ grant is rejected at load (fail-closed).
 
 import logging
 import re
+import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -159,11 +160,153 @@ class SkillRegistry:
             raise KeyError("no such skill: %s" % name)
         return self._skills[name]
 
+    def replace(self, skill: Skill) -> None:
+        if skill.name not in self._skills:
+            raise SkillError("no such skill to replace: %s" % skill.name)
+        self._skills[skill.name] = skill
+        logger.debug("skill replaced name=%s", skill.name)
+
     def names(self) -> List[str]:
         return sorted(self._skills)
 
     def derived_rules(self, name: str) -> List[Dict[str, Any]]:
         return derive_permissions(self.get(name))
+
+
+STATUS_ACTIVE = "active"
+STATUS_CANARY = "canary"
+STATUS_ARCHIVED = "archived"
+
+
+@dataclass
+class SkillVersion:
+    version: int
+    skill: Skill
+    provenance: str
+    ts: float
+    status: str
+
+
+@dataclass
+class SkillCase:
+    must_mention: List[str] = field(default_factory=list)
+
+
+class SkillLibrary:
+    """Skill lifecycle over SkillRegistry (issue #54): four gates on every
+    write (generation/verification/canary/rollback — arXiv 2611.15268),
+    usage-rate pruning that archives instead of deleting (arXiv 2611.19823),
+    and task-characteristic routing to cut retrieval noise (arXiv 2611.17007)."""
+
+    def __init__(self, registry: Optional[SkillRegistry] = None, clock: Optional[Any] = None) -> None:
+        self.registry = registry or SkillRegistry()
+        self._clock = clock or time.time
+        self._history: Dict[str, List[SkillVersion]] = {}
+        self._status: Dict[str, str] = {}
+        self._usage: Dict[str, int] = {}
+        self._created: Dict[str, float] = {}
+
+    def propose(
+        self,
+        skill: Skill,
+        provenance: str = "",
+        cases: Optional[List[SkillCase]] = None,
+        canary_confirmed: bool = False,
+        base_version: Optional[int] = None,
+    ) -> Skill:
+        """Write a new skill or self-modification through the four gates.
+        Any failed gate blocks the write (SkillError naming the gate)."""
+        previous = self._history.get(skill.name)
+        # Gate 1 — generation: provenance recorded.
+        if not provenance or not provenance.strip():
+            raise SkillError("gate generation: provenance is required")
+        # Gate 2 — verification: validated against known cases.
+        rendered = skill.render_prompt()
+        for case in cases or []:
+            for token in case.must_mention:
+                if token not in rendered:
+                    raise SkillError("gate verification: prompt missing %r" % token)
+        # Gate 3 — canary: limited rollout asserted before general availability.
+        if not canary_confirmed:
+            raise SkillError("gate canary: limited rollout must be confirmed")
+        # Gate 4 — rollback: modifications lock on the current version so the
+        # previous one stays restorable; stale-base proposals are blocked.
+        version = 1
+        if previous:
+            current = previous[-1].version
+            if base_version != current:
+                raise SkillError(
+                    "gate rollback: base_version %s stale (current %d)" % (base_version, current)
+                )
+            version = current + 1
+        if skill.name in self.registry.names():
+            self.registry.replace(skill)
+        else:
+            self.registry.register(skill)
+        self._history.setdefault(skill.name, []).append(
+            SkillVersion(version=version, skill=skill, provenance=provenance,
+                         ts=self._clock(), status=STATUS_ACTIVE)
+        )
+        self._status[skill.name] = STATUS_ACTIVE
+        self._usage.setdefault(skill.name, 0)
+        self._created.setdefault(skill.name, self._clock())
+        logger.info(
+            "skill write accepted name=%s version=%d provenance=%s", skill.name, version, provenance
+        )
+        return skill
+
+    def rollback(self, name: str, version: int) -> Skill:
+        history = self._history.get(name) or []
+        for entry in history:
+            if entry.version == version:
+                if name in self.registry.names():
+                    self.registry.replace(entry.skill)
+                else:
+                    self.registry.register(entry.skill)
+                self._status[name] = STATUS_ACTIVE
+                logger.info("skill rolled back name=%s version=%d", name, version)
+                return entry.skill
+        raise SkillError("no such version %s for skill %s" % (version, name))
+
+    def record_usage(self, name: str) -> None:
+        self._usage[name] = self._usage.get(name, 0) + 1
+
+    def prune(self, min_uses: int, window_s: float) -> List[str]:
+        """Archive skills below the usage threshold after the retention
+        window — archived skills stay as the audit trail, never deleted,
+        and can no longer be selected."""
+        now = self._clock()
+        archived = []
+        for name, uses in list(self._usage.items()):
+            if self._status.get(name) == STATUS_ARCHIVED:
+                continue
+            if uses < min_uses and now - self._created.get(name, now) > window_s:
+                self._status[name] = STATUS_ARCHIVED
+                archived.append(name)
+                logger.info("skill archived by usage pruning name=%s uses=%d", name, uses)
+        return archived
+
+    def select(self, task_text: str, top_k: int = 3) -> List[Skill]:
+        """Task-characteristic routing: skills scored by token overlap with
+        the task's features instead of flat retrieval. Archived skills are
+        never selectable."""
+        tokens = set(re.findall(r"\w+", (task_text or "").lower()))
+        scored = []
+        for name in self.registry.names():
+            if self._status.get(name) == STATUS_ARCHIVED:
+                continue
+            skill = self.registry.get(name)
+            hay = set(re.findall(r"\w+", ("%s %s %s" % (skill.name, skill.description, skill.body)).lower()))
+            overlap = len(tokens & hay)
+            scored.append((overlap, skill.name, skill))
+        scored.sort(key=lambda t: (-t[0], t[1]))
+        return [s for _, _, s in scored[:top_k]]
+
+    def status(self, name: str) -> str:
+        return self._status.get(name, "")
+
+    def usage(self, name: str) -> int:
+        return self._usage.get(name, 0)
 
 
 __all__ = [
@@ -173,4 +316,10 @@ __all__ = [
     "SkillRegistry",
     "parse_skill",
     "derive_permissions",
+    "SkillCase",
+    "SkillLibrary",
+    "SkillVersion",
+    "STATUS_ACTIVE",
+    "STATUS_ARCHIVED",
+    "STATUS_CANARY",
 ]
