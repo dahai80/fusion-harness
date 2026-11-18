@@ -157,6 +157,7 @@ class TeamRuntime:
         self._tasks: Dict[str, TeamTask] = {}
         self._task_seq = 0
         self._inboxes: Dict[str, List[Dict[str, Any]]] = {m.name: [] for m in definition.members}
+        self._supplement_queues: Dict[str, Any] = {}
         import time as _time
 
         self._clock = clock or _time.time
@@ -381,7 +382,16 @@ class TeamRuntime:
             captured["session"] = session
             return await agent_fn(spec, session)
 
-        result = await self.runner.run(spec, _wrapped, event_sink=_sink)
+        import asyncio
+
+        steer_queue: asyncio.Queue = asyncio.Queue()
+        self._supplement_queues[task_id] = steer_queue
+        try:
+            result = await self.runner.run(
+                spec, _wrapped, event_sink=_sink, steer_queue=steer_queue
+            )
+        finally:
+            self._supplement_queues.pop(task_id, None)
         if stream is not None:
             session = captured.get("session")
             stream.append(
@@ -419,6 +429,28 @@ class TeamRuntime:
             {"member": member.name, "task_id": task_id, "status": result.status},
         )
         return result
+
+    # ---------- mid-run steering (issue #64) ----------
+
+    def steer_member(self, task_id: str, content: str, origin: str = "operator") -> bool:
+        """Queue a supplement note for a running member. The daemon-side
+        RPC (agent-studio #748) feeds this; harness applies whatever
+        arrives — no harness-side cap (daemon owns the 3-per-run cap).
+        Returns False when no run is active for the task. Injection into
+        the member's context happens only at AgentGraph node boundaries,
+        via SubagentSession.drain_steers()."""
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("steer content required")
+        if origin not in ("operator", "lead"):
+            raise ValueError("steer origin must be 'operator' or 'lead'")
+        queue = self._supplement_queues.get(task_id)
+        if queue is None:
+            logger.info("steer dropped: no active run task=%s", task_id)
+            return False
+        prefix = "lead note" if origin == "lead" else "operator note"
+        queue.put_nowait("[steer] %s: %s" % (prefix, content.strip()))
+        logger.info("steer queued task=%s origin=%s", task_id, origin)
+        return True
 
     # ---------- mailbox ----------
 

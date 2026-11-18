@@ -37,6 +37,8 @@ _DURABLE_EVENT_TYPES = (
     "prompt",
     "final",
     "run_finished",
+    # Mid-run steering notes (issue #64).
+    "steer",
 )
 
 
