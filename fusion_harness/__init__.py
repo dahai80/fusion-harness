@@ -180,7 +180,7 @@ from fusion_harness.policies import (
     run_with_retry,
 )
 
-KERNEL_VERSION = "0.19.0"
+KERNEL_VERSION = "0.20.0"
 
 __all__ = [
     "KERNEL_VERSION",
