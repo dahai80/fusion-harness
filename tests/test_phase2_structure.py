@@ -41,8 +41,9 @@ class TestCheckpoints:
         for i in range(15):
             store.save("s1", CheckpointState(budget_spent_tokens=i))
         removed = store.prune("s1", keep_last=10)
-        assert removed == 5
-        assert len(store.list_checkpoints("s1")) == 10
+        # issue #74: lineage root (seq 1) is never pruned.
+        assert removed == 4
+        assert len(store.list_checkpoints("s1")) == 11
         assert store.latest("s1").budget_spent_tokens == 14
 
     def test_resume_preserves_state_not_effects(self, tmp_path):
