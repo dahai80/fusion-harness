@@ -34,9 +34,7 @@ Rules:
 - Enforcement is **fail-closed by default** (since 0.2.0, issue #1): a funnel without a wired permission engine denies every tool call. Opt-out is explicit and loud (see §5).
 - `LLMFunnel` applies the same budget gate to LLM calls (`pre_llm`/`post_llm` accounting, lifecycle events on threshold crossings).
 - `LifecycleBus` is the event spine: per-session ring buffer, optional JSONL persistence, sync subscriber callbacks.
-
 ## 2. Permission Engine
-
 - **Deny-first**: a deny anywhere in the chain wins immediately.
 - Evaluation order: `BYPASS` mode short-circuit → **plan gate** → **content scan** → **rules** (layers scanned `node` → `graph` → `global`; first `deny` wins; `ask` beats `allow` regardless of layer; `path_scope` restricts a rule to tool args whose paths live under the scope) → readonly auto-allow → **loopback auto-allow** → mode policy → default `ask`.
 - Modes: `default` / `plan` / `approved` / `bypass`. `plan` denies every non-readonly tool (first-class mode, not just a ctx flag).
@@ -44,17 +42,13 @@ Rules:
 - **Loopback auto-allow**: URLs targeting only `localhost`/`127.0.0.1`/`::1` are allowed without approval (local services). Disabled via `FUSION_PERMISSION_A3=0`.
 - An un-armed engine (no rules, default mode) passes through with a loud warning, unless `FUSION_PERMISSION_PASSTHROUGH=0` turns passthrough into `ask`.
 - Every decision is metered (`stats()`).
-
 ## 3. Hook Engine
-
 - Event list: `PRE_TOOL_USE`, `POST_TOOL_USE`, `POST_TOOL_USE_FAILURE`, `SESSION_START`, `SESSION_END`, `STOP`, `ERROR`, `CHECKPOINT`, `TEAM_MESSAGE`, `PERSONA_RELOADED`, `COMPACT_BEFORE` (compactor).
 - **Fail-closed events**: `PRE_TOOL_USE`, `POST_TOOL_USE`, `TOOL_DENY`. On these, a hook error OR the per-fire budget (`FUSION_HOOK_MAX_MS`, default 50ms) running out with hooks still unrun → `decision=block`. Skipping a security hook equals allowing the call — never silent.
 - Non-security events swallow hook errors (`decision=approve`).
 - Two hook types: `callback` (Python callable; `@hook` decorator registers into a module-level registry flushed at engine construction) and `command` (subprocess; **disabled unless `FUSION_HOOKS_ALLOW_COMMAND=1` — disabled command hooks return `block` on fail-closed events, not a no-op).
 - Matcher semantics: `*` wildcard on tool name; unmatched hooks don't fire.
-
 ## 4. Compactor
-
 - Levels derived from buffers: `error = window - error_buffer` (highest), `warning = window - warning_buffer`, `manual = window - manual_buffer`. `should_compact()` returns the highest crossed level.
 - Pipeline (`compact(messages, level)`): fire `COMPACT_BEFORE` hooks + lifecycle → extract `RetentionList` (TODO lines, interface defs, constraints, pending tasks — kept verbatim) → microcompact (truncate oversized tool results, head+tail) → smart truncate (drop all but `keep_recent_rounds` rounds, summarize dropped) → hard compact at error level if still over → inject retention header.
 - Summarization: LLM via injected gateway (fusion-mlx, async path `compact_async`) with **deterministic fallback** (`[Compacted prior context]` + user intents/tools/conclusions extraction). Fallback is always available; the gateway is an upgrade, never a dependency.
@@ -62,9 +56,7 @@ Rules:
 - **Tool-result clearing (0.7.0)**: before summarization, tool results older than `keep_recent_rounds` collapse to identity stubs `[tool result cleared: id=... bytes=...]` (disable: `CompactionConfig(clear_tool_results=False)`). Recent-round results keep head+tail truncation only.
 - **Survival contract (0.7.0)**: every compaction path must (a) keep all pre-existing system messages verbatim — degradation is logged at ERROR and the message re-inserted; (b) keep the first user message reachable — if compacted away it is re-pinned as a `[Pinned task goal]` system segment (disable: `pin_task_goal=False`). `Compactor.survival_manifest(messages)` introspects pinned segments.
 - **Token counting (0.7.0)**: `CompactionConfig.token_counter` accepts any object with `count_text(str) -> int`; default `HeuristicTokenCounter` (chars/4, unchanged). `CJKAwareHeuristicTokenCounter` counts CJK runs at ~1 token/char. `count_messages(messages, counter)` is the shared list counter.
-
 ## 5. Environment Variables
-
 | Variable | Default | Effect |
 |---|---|---|
 | `FUSION_FUNNEL_PERMISSIONS=off` | unset | **Opt-out of permission enforcement** (headless/CI). Every skipped call logs `permission enforcement DISABLED via ...`. |
@@ -263,3 +255,10 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 - **Run streams (#63)**: `run_member` records `run_started/prompt/tool_call/tool_result/tool_error/final/run_finished` via `SessionEventLog`, one JSONL per run at `<state_dir>/runs/<task_id>/<attempt>.jsonl`; secrets (sensitive keys or embedded KEY=value) redact to `***` pre-write; `run_finished.usage` = funnel ledger balance, tolerance 0. Stream failures degrade, never fail the run.
 - **Steering (#64)**: `steer_member(task_id, content, origin)` queues `[steer] operator|lead note:`; members drain via `SubagentSession.drain_steers()` at AgentGraph node boundaries only; drained notes record as `steer` events; no harness-side cap (daemon owns it).
 - **Wakeup rules (#65)**: `add_wakeup` validates `at|every` + `on_timeout: wake|end` (+`expires_at`), rejects `on_event` (phase 2), caps 8 armed/task; `check_wakeups` fires `at` once / `every` on interval — `wake`: `blocked->queued`, `end`: `blocked->cancelled` reason `wakeup_timeout`; expired rules prune lazily on task read.
+## 33. Host Hardening Batch (0.22.0, issues #72-#76)
+- **Cache axis (#76)**: `LLMFunnel.cache` (`CacheTelemetry`) splits input tokens cached/uncached from usage payloads (OpenAI `prompt_tokens_details` / Anthropic `cache_read` styles), hit rate per run (`start_run`/`run_snapshot`) and aggregate (`snapshot`); append-only prefix check on every outgoing (post-compaction) message list records the first divergent index — `prefix_break` event; compaction rewriting history is visible as a break.
+- **Lineage fork (#74)**: `CheckpointStore.fork(session, seq)` branches into a NEW lineage with an identical state copy (original resumable, untouched); `CheckpointState` carries `lineage_id` + `parent_checkpoint`; `fork_chain()` walks root-first via per-session root checkpoints; `lineage_checkpoints()` queries the migrated `lineage_id` column; `prune()` never removes the lineage root (seq 1).
+- **Destructive approval (#73)**: `ApprovalGate` classifies via `TOOL_DESTRUCTIVE_TABLE` + name tokens; server-side confirm fields NEVER authorize; approval rides the #66 queue (host requester), token idempotent per call id, single redemption, cross-call-id replay rejected (`destructive_token_replay`); `ToolFunnel` stage 2c denies destructive calls without a host grant; telemetry granted/denied/timeout.
+- **Artifact scan (#75)**: `scan_artifact` regex sets (injection + credential exfiltration, English findings); `MemoryBridge` gates every memory write — flagged content stored quoted+stamped `origin=untrusted`, never consolidated or injected; flagged recalls dropped; `parse_skill` blocks flagged SKILL.md via `SkillScanError(findings)` (signal to #54 gates); `ArtifactQuarantine` persistent + queryable; scan is single-pass O(n), <1 ms per 10 KB.
+- **A/B eval gate (#72)**: `evals/compact_bench.py` scores full-history vs compacted state with a deterministic context-availability stub (zero model calls); metrics task-success delta, rule-survival recall, tokens saved; `assert_gate` fails CI on success drop or recall loss; seeded `BadSummarizer` must fail the gate.
+- **Trajectory legacy pools (#81)**: `_adapt_cowork` falls back `node_id or member or "workflow"`; `TrajectoryReader(skip_corrupt=True)` skips bad lines with a warning (default strict).
