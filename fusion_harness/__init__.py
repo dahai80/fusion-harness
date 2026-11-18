@@ -107,6 +107,7 @@ from fusion_harness.human_gate import (
     ReplyValidationError,
     validate_reply,
 )
+from fusion_harness.json_repair import JSONRepairError, parse_repair
 from fusion_harness.team_runtime import (
     MEMBER_CONTEXT_CAP_BYTES,
     MSG_TYPES,
@@ -336,6 +337,8 @@ __all__ = [
     "verify_spawn_brief",
     "CompactionArchive",
     "DanglingLinkError",
+    "JSONRepairError",
+    "parse_repair",
     "cite_link",
     "extract_links",
     "rehydrate",
