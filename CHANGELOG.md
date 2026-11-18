@@ -7,7 +7,7 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.17.0
+version: 0.18.0
 updated: 2026-11-18
 owner: "@dahai"
 source_of_truth:
@@ -15,6 +15,68 @@ source_of_truth:
 ---
 
 # Changelog
+
+## 0.18.0 (2026-11-18)
+
+Second fusion-mlx research-handoff batch — four features, issues #52-#55.
+
+### Compaction v2 — resolvable archive links (issue #52, ports fusion-mlx M11)
+
+- `fusion_harness.compaction_archive`: append-only JSONL base archive.
+  `CompactionArchive.append(messages)` stores evicted tool-result spans
+  and returns `archive://span-N` links; compaction clear-stubs cite the
+  link so the eviction is resolvable instead of lossy.
+- `resolve(link)` replays a link back to its messages;
+  `DanglingLinkError` on malformed or unresolvable links (bug, never a
+  degraded mode). `rehydrate(messages, archive)` expands links for
+  replay; `cite_link` / `extract_links` helpers. Restart-safe via
+  reload-on-construct; compaction never mutates written span bytes.
+
+### Handoff verification — permission ledger replay (issue #53, ports M12)
+
+- `PermissionEngine.evaluate()` now records every outcome to an
+  in-memory ledger; `export_ledger()` hands the segment to the receiver
+  (honest handoffs pay only the replay pass).
+- `fusion_harness.handoff_verify`: `verify_handoff(claims, ledger)` —
+  a claim passes only on a recorded ALLOW; absent = "not recorded"
+  (fabricated), deny/ask = "denied" (unauthorized); both fail loudly,
+  never silent-accept. `ledger_for_transport` / `claims_for_transport`
+  wrap the payload for `SpawnBrief.metadata`; `verify_spawn_brief`
+  treats a missing ledger or claims as a failure.
+
+### Skill library lifecycle — four gates, pruning, routing (issue #54, ports M13)
+
+- `fusion_harness.skills.SkillLibrary` gates every write: generation
+  (non-empty provenance), verification (each `SkillCase.must_mention`
+  token present in `render_prompt()`), canary (`canary_confirmed`),
+  rollback (modification requires current `base_version` — stale base
+  rejected). Versioned history per skill; `rollback(name, version)`.
+- Usage pruning: `prune(min_uses, window_s)` archives cold skills —
+  archived skills stay in the registry but are unselectable; nothing
+  hard-deletes. `select(task, top_k)` routes by task-feature token
+  overlap over name + description + body.
+- `SkillRegistry.replace(skill)` for versioned modification (plain
+  `register` still rejects duplicates).
+
+### Telemetry-only annotations (issue #55, ports M14; observation only)
+
+- `trajectory.mark_discardable(record, reason)` annotates spans with
+  `payload["discardable"]` — reasons limited to `stale_tool_output` /
+  `superseded_turn`; unknown reasons rejected; nothing is actually
+  dropped until the fusion-mlx engine API (M14 #1645) exists.
+- `PrefixStabilityTracker`: `observe_messages(agent_id, messages)`
+  samples the system + first-user prefix; `report()` emits per-agent
+  `{stability, turns}` — first turn is baseline, not counted. Harness
+  only reports; the warm-list threshold stays with fusion-mlx.
+
+### Process rules (from issue #52 review)
+
+- Prompt-side features are tested through the real object path (no
+  string-only assertions on generated prompts).
+- Telemetry refactors carry rate/arrival assertions so the metric
+  cannot drift silently.
+
+Tests: 453 → 503 (50 new). All stdlib, no new dependencies.
 
 ## 0.17.0 (2026-11-18)
 

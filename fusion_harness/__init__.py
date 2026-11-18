@@ -72,6 +72,13 @@ from fusion_harness.handoff_verify import (
     verify_handoff,
     verify_spawn_brief,
 )
+from fusion_harness.compaction_archive import (
+    CompactionArchive,
+    DanglingLinkError,
+    cite_link,
+    extract_links,
+    rehydrate,
+)
 from fusion_harness.code_mode import (
     CODE_MODE_SYSTEM_PROMPT,
     CodeExecutor,
@@ -171,7 +178,7 @@ from fusion_harness.policies import (
     run_with_retry,
 )
 
-KERNEL_VERSION = "0.17.0"
+KERNEL_VERSION = "0.18.0"
 
 __all__ = [
     "KERNEL_VERSION",
@@ -323,6 +330,11 @@ __all__ = [
     "ledger_for_transport",
     "verify_handoff",
     "verify_spawn_brief",
+    "CompactionArchive",
+    "DanglingLinkError",
+    "cite_link",
+    "extract_links",
+    "rehydrate",
     "read_segment",
     "render_segment_result",
     "segment_header",
