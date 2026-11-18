@@ -136,7 +136,10 @@ def _adapt_cowork(data: Dict[str, Any]) -> Optional[TrajectoryRecord]:
         run_id=str(
             data.get("execution_id") or data.get("workflow_id") or data.get("trace_id") or ""
         ),
-        node_id=str(data.get("node_id") or ""),
+        # Issue #81: legacy cowork workflow-level events carry an empty
+        # node_id — fall back to a non-empty node scope instead of failing
+        # TrajectoryRecord validation mid-stream.
+        node_id=str(data.get("node_id") or data.get("member") or "workflow"),
         member=str(data.get("member") or ""),
         ts=int(float(data.get("ts") or 0) * 1000)
         if float(data.get("ts") or 0) < 10**12
@@ -245,8 +248,13 @@ class TrajectoryWriter:
 
 
 class TrajectoryReader:
-    def __init__(self, path: str) -> None:
+    def __init__(self, path: str, skip_corrupt: bool = False) -> None:
         self.path = path
+        # Issue #81: best-effort mode for mixed pools — a single corrupt or
+        # unknown-shape line is skipped with a warning instead of aborting
+        # the whole file. Default stays strict (fail loudly).
+        self.skip_corrupt = skip_corrupt
+        self.skipped = 0
 
     def stream(self) -> Iterator[TrajectoryRecord]:
         if not os.path.exists(self.path):
@@ -259,8 +267,21 @@ class TrajectoryReader:
                 try:
                     data = json.loads(line)
                 except ValueError as exc:
+                    if self.skip_corrupt:
+                        self.skipped += 1
+                        logger.warning("trajectory line %d not JSON, skipped: %s", line_no, exc)
+                        continue
                     raise TrajectorySchemaError("line %d not JSON: %s" % (line_no, exc))
-                normalized = normalize_record(data)
+                try:
+                    normalized = normalize_record(data)
+                except TrajectorySchemaError as exc:
+                    if self.skip_corrupt:
+                        self.skipped += 1
+                        logger.warning(
+                            "trajectory line %d failed normalization, skipped: %s", line_no, exc
+                        )
+                        continue
+                    raise
                 if isinstance(normalized, list):
                     yield from normalized
                 else:
