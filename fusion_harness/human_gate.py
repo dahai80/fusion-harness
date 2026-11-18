@@ -316,6 +316,10 @@ class HumanGate:
 
     # ---------- inspection ----------
 
+    def get_question(self, question_id: str) -> Optional[HumanQuestion]:
+        with self._lock:
+            return self._questions.get(question_id)
+
     def pending(self, session_id: Optional[str] = None) -> List[HumanQuestion]:
         with self._lock:
             out = []
