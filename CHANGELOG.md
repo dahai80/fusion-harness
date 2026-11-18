@@ -7,7 +7,7 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.19.0
+version: 0.20.0
 updated: 2026-11-18
 owner: "@dahai"
 source_of_truth:
@@ -15,6 +15,59 @@ source_of_truth:
 ---
 
 # Changelog
+
+## 0.20.0 (2026-11-18)
+
+Third multica-borrow batch — team run operations, issues #63-#65.
+
+### Per-run event streams (issue #63, multica borrow F2)
+
+- `TeamRuntime.run_member` records a per-run event stream via
+  `session_log.py`: `run_started / prompt / tool_call / tool_result /
+  tool_error / final / run_finished`, timestamped, one JSONL per run at
+  `<state_dir>/runs/<task_id>/<attempt>.jsonl` (attempt increments per
+  dispatch; the stream's session_id is the attempt number — task_id,
+  member and team ride every event payload). A failed run replays
+  completely, tool_error included.
+- Redaction before write: sensitive key names (secret/token/password/
+  api_key/authorization/credential/...) → `***`; embedded `KEY=value` /
+  `KEY: value` patterns inside string values → value part `***`.
+- `run_finished` carries usage straight from the funnel ledger balance
+  (prompt/completion/reasoning/total — tolerance 0, no re-aggregation);
+  session counter fallback when no ledger is wired.
+- Plumbing is additive: `SubagentRunner.run(..., event_sink=None)`;
+  `SubagentSession.log_event()` forwards to the sink and is a no-op
+  without one — the plain subagent spawn path is unaffected. Stream
+  open/write failures log a warning and degrade, never fail the run.
+
+### Mid-run steering (issue #64, multica borrow F3)
+
+- `run_member` attaches an `asyncio.Queue` supplement queue per run
+  (detached when the run ends); `TeamRuntime.steer_member(task_id,
+  content, origin="operator"|"lead")` queues `[steer] operator note:`
+  / `[steer] lead note:` messages. No harness-side cap — the daemon
+  owns the 3-per-run cap (agent-studio #748); harness applies whatever
+  arrives.
+- The member loop drains via `SubagentSession.drain_steers()` at
+  AgentGraph node boundaries only — injection points are the drain
+  calls, never mid-tool-call. Each drained note records to the run
+  stream as a `steer` event, so steering is visible in replay.
+
+### Task wakeup rules (issue #65, multica borrow F4)
+
+- `TeamRuntime.add_wakeup(task_id, rule)` stores `{kind: at|every,
+  at/every, on_timeout: wake|end, expires_at}` in
+  `task.metadata["wakeups"]`; validation on write; `on_event`
+  conditions are phase 2 and rejected in v1; cap 8 armed rules per
+  task at the runtime boundary (fired rules free cap space).
+- `check_wakeups` fires due rules — `at` exactly once, `every` on its
+  interval: `wake` moves a blocked task back to `queued` (the lead's
+  pick pool; `queued -> in_progress` transition added), `end` cancels
+  with reason `wakeup_timeout`. Expired rules prune lazily on task
+  read — no sweeper, no new retention policy. Rules survive
+  `save_state`/`load_state`.
+
+Tests: 516 → 555 (39 new). All stdlib, no new dependencies.
 
 ## 0.19.0 (2026-11-18)
 
