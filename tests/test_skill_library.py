@@ -24,10 +24,14 @@ def _lib(now=1000.0):
 
 
 class TestFourGates:
-    def test_happy_path_new_skill(self, ):
+    def test_happy_path_new_skill(
+        self,
+    ):
         lib, t = _lib()
         out = lib.propose(
-            _skill(), provenance="author:opus", cases=[SkillCase(must_mention=["migrations"])],
+            _skill(),
+            provenance="author:opus",
+            cases=[SkillCase(must_mention=["migrations"])],
             canary_confirmed=True,
         )
         assert out.name == "deploy-db"
@@ -42,7 +46,8 @@ class TestFourGates:
         lib, _ = _lib()
         with pytest.raises(SkillError, match="gate verification"):
             lib.propose(
-                _skill(), provenance="a",
+                _skill(),
+                provenance="a",
                 cases=[SkillCase(must_mention=["rollback-procedure"])],
                 canary_confirmed=True,
             )
@@ -65,9 +70,7 @@ class TestFourGates:
         lib, t = _lib()
         lib.propose(_skill(), provenance="a", canary_confirmed=True)
         t["v"] = 2000.0
-        lib.propose(
-            _skill(body="v2 body"), provenance="b", base_version=1, canary_confirmed=True
-        )
+        lib.propose(_skill(body="v2 body"), provenance="b", base_version=1, canary_confirmed=True)
         rolled = lib.rollback("deploy-db", 1)
         assert rolled.body == "run migrations then verify"
         with pytest.raises(SkillError, match="no such version"):

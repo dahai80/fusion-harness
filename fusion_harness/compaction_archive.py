@@ -70,7 +70,9 @@ class CompactionArchive:
                 with open(self.path, "a", encoding="utf-8") as fh:
                     fh.write(json.dumps(span, ensure_ascii=False) + "\n")
             link = LINK_PREFIX + str(span["id"])
-            logger.info("archive span appended id=%d messages=%d", span["id"], len(span["messages"]))
+            logger.info(
+                "archive span appended id=%d messages=%d", span["id"], len(span["messages"])
+            )
             return [link]
 
     def resolve(self, link: str) -> list[dict]:
@@ -94,7 +96,11 @@ class CompactionArchive:
 def cite_link(content: str, link: str) -> str:
     """Embed a resolvable link in a cleared-tool stub so summaries and
     later turns can re-fetch the original content."""
-    return "%s; %s]" % (content.rstrip("]"), link) if content.endswith("]") else "%s [%s]" % (content, link)
+    return (
+        "%s; %s]" % (content.rstrip("]"), link)
+        if content.endswith("]")
+        else "%s [%s]" % (content, link)
+    )
 
 
 def extract_links(text: str) -> list[str]:

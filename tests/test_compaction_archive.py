@@ -137,7 +137,9 @@ class TestRecallReplay:
 class TestZeroModelCalls:
     def test_no_model_imports(self):
         src = open(
-            os.path.join(os.path.dirname(__file__), "..", "fusion_harness", "compaction_archive.py"),
+            os.path.join(
+                os.path.dirname(__file__), "..", "fusion_harness", "compaction_archive.py"
+            ),
             encoding="utf-8",
         ).read()
         for banned in ("llm_gateway", "MLXClient", "mlx_client", ".chat(", "compactor"):

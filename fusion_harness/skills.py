@@ -198,7 +198,9 @@ class SkillLibrary:
     usage-rate pruning that archives instead of deleting (arXiv 2611.19823),
     and task-characteristic routing to cut retrieval noise (arXiv 2611.17007)."""
 
-    def __init__(self, registry: Optional[SkillRegistry] = None, clock: Optional[Any] = None) -> None:
+    def __init__(
+        self, registry: Optional[SkillRegistry] = None, clock: Optional[Any] = None
+    ) -> None:
         self.registry = registry or SkillRegistry()
         self._clock = clock or time.time
         self._history: Dict[str, List[SkillVersion]] = {}
@@ -244,8 +246,13 @@ class SkillLibrary:
         else:
             self.registry.register(skill)
         self._history.setdefault(skill.name, []).append(
-            SkillVersion(version=version, skill=skill, provenance=provenance,
-                         ts=self._clock(), status=STATUS_ACTIVE)
+            SkillVersion(
+                version=version,
+                skill=skill,
+                provenance=provenance,
+                ts=self._clock(),
+                status=STATUS_ACTIVE,
+            )
         )
         self._status[skill.name] = STATUS_ACTIVE
         self._usage.setdefault(skill.name, 0)
@@ -296,7 +303,11 @@ class SkillLibrary:
             if self._status.get(name) == STATUS_ARCHIVED:
                 continue
             skill = self.registry.get(name)
-            hay = set(re.findall(r"\w+", ("%s %s %s" % (skill.name, skill.description, skill.body)).lower()))
+            hay = set(
+                re.findall(
+                    r"\w+", ("%s %s %s" % (skill.name, skill.description, skill.body)).lower()
+                )
+            )
             overlap = len(tokens & hay)
             scored.append((overlap, skill.name, skill))
         scored.sort(key=lambda t: (-t[0], t[1]))
