@@ -4,7 +4,7 @@ Extracted from fusion-agent-studio N0 kernel (#357). Pure stdlib, no deps.
 Consumers: fusion-agent-studio (shim import), fusion-cowork, fusion-code.
 """
 
-from fusion_harness.checkpoint import CheckpointState, CheckpointStore
+from fusion_harness.checkpoint import CheckpointError, CheckpointState, CheckpointStore
 from fusion_harness.compactor import CompactionConfig, Compactor
 from fusion_harness.tokens import (
     CJKAwareHeuristicTokenCounter,
@@ -187,6 +187,7 @@ __all__ = [
     "KERNEL_VERSION",
     "CompactionConfig",
     "Compactor",
+    "CheckpointError",
     "CheckpointState",
     "CheckpointStore",
     "CODE_MODE_SYSTEM_PROMPT",
