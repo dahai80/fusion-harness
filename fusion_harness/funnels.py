@@ -556,6 +556,139 @@ def _budget_exceeded(budget, graph_id: str = "") -> bool:
         return bool(budget.is_exceeded())
 
 
+class CacheTelemetry:
+    """KV-cache axis for funnel accounting (issue #76). Splits input tokens
+    into cached vs uncached from provider usage payloads, tracks hit rate
+    per run and in aggregate, and counts prompt-prefix breaks (append-only
+    violations) with the first divergent message index — answering 'which
+    segment broke the cache'. Zero provider API calls: usage payloads and
+    request construction only."""
+
+    _CACHED_KEYS = (
+        "cache_read_input_tokens",
+        "cache_read_tokens",
+        "cached_tokens",
+    )
+
+    def __init__(self, max_break_events: int = 16) -> None:
+        self.input_tokens = 0
+        self.cached_input_tokens = 0
+        self.prefix_steps = 0
+        self.prefix_breaks = 0
+        self.break_events = []
+        self._max_break_events = max_break_events
+        self._run_input = 0
+        self._run_cached = 0
+        self._run_steps = 0
+        self._run_breaks = 0
+        self._prev_prefix = None
+
+    @staticmethod
+    def _extract(usage: dict) -> tuple:
+        """(total_input, cached) from a provider usage payload. Anthropic
+        style: input_tokens excludes cache reads, so total = uncached +
+        cached. OpenAI style: prompt_tokens already includes cached_tokens,
+        so total = prompt_tokens."""
+        if not isinstance(usage, dict):
+            return 0, 0
+        cached = 0
+        details = usage.get("prompt_tokens_details")
+        if isinstance(details, dict):
+            cached = int(details.get("cached_tokens", 0) or 0)
+        if not cached:
+            for key in CacheTelemetry._CACHED_KEYS:
+                if usage.get(key):
+                    cached = int(usage[key] or 0)
+                    break
+        uncached = int(usage.get("prompt_tokens", 0) or 0) or int(usage.get("input_tokens", 0) or 0)
+        anthropic_style = any(k in usage for k in ("cache_read_input_tokens", "cache_read_tokens"))
+        total = uncached + cached if anthropic_style else uncached
+        return total, cached
+
+    def record_usage(self, usage: dict | None) -> dict:
+        total, cached = self._extract(usage or {})
+        self.input_tokens += total
+        self.cached_input_tokens += cached
+        self._run_input += total
+        self._run_cached += cached
+        return {"input_tokens": total, "cached_input_tokens": cached}
+
+    @staticmethod
+    def _prefix_key(message: dict) -> str:
+        import hashlib
+        import json as _json
+
+        role = message.get("role", "")
+        content = message.get("content")
+        try:
+            blob = _json.dumps(content, sort_keys=True, ensure_ascii=False, default=str)
+        except (TypeError, ValueError):
+            blob = str(content)
+        return hashlib.sha1(("%s\x00%s" % (role, blob)).encode("utf-8")).hexdigest()
+
+    def observe_prefix(self, messages: list | None) -> dict | None:
+        """Append-only check on the outgoing message list: a step is stable
+        when the previous list is a strict prefix of the current one.
+        Returns the break event dict on a break, else None."""
+        keys = [self._prefix_key(m) for m in (messages or [])]
+        self.prefix_steps += 1
+        self._run_steps += 1
+        if self._prev_prefix is None:
+            self._prev_prefix = keys
+            return None
+        prev = self._prev_prefix
+        self._prev_prefix = keys
+        stable = len(keys) >= len(prev) and keys[: len(prev)] == prev
+        if stable:
+            return None
+        diverge = min(len(prev), len(keys))
+        for i in range(min(len(prev), len(keys))):
+            if prev[i] != keys[i]:
+                diverge = i
+                break
+        self.prefix_breaks += 1
+        self._run_breaks += 1
+        event = {"step": self.prefix_steps, "diverge_index": diverge}
+        self.break_events.append(event)
+        if len(self.break_events) > self._max_break_events:
+            self.break_events = self.break_events[-self._max_break_events :]
+        logger.info("prefix break step=%d diverge_index=%d", self.prefix_steps, diverge)
+        return event
+
+    def start_run(self) -> None:
+        self._run_input = 0
+        self._run_cached = 0
+        self._run_steps = 0
+        self._run_breaks = 0
+
+    @staticmethod
+    def _rate(num: int, den: int) -> float:
+        return round(num / den, 6) if den else 0.0
+
+    def run_snapshot(self) -> dict:
+        return {
+            "input_tokens": self._run_input,
+            "cached_input_tokens": self._run_cached,
+            "hit_rate": self._rate(self._run_cached, self._run_input),
+            "prefix_steps": self._run_steps,
+            "prefix_breaks": self._run_breaks,
+            "prefix_stability": self._rate(self._run_steps - self._run_breaks, self._run_steps),
+        }
+
+    def snapshot(self) -> dict:
+        return {
+            "input_tokens": self.input_tokens,
+            "cached_input_tokens": self.cached_input_tokens,
+            "hit_rate": self._rate(self.cached_input_tokens, self.input_tokens),
+            "prefix_steps": self.prefix_steps,
+            "prefix_breaks": self.prefix_breaks,
+            "prefix_stability": self._rate(
+                self.prefix_steps - self.prefix_breaks, self.prefix_steps
+            ),
+            "break_events": list(self.break_events),
+        }
+
+
 class LLMFunnel:
     """Single LLM admission path: lifecycle -> hooks -> budget -> compaction."""
 
@@ -573,6 +706,7 @@ class LLMFunnel:
         self.telemetry_engine = telemetry_engine
         self.budget_ref = budget_ref
         self.calls = 0
+        self.cache = CacheTelemetry()
 
     def set_budget_ref(self, budget_ref) -> None:
         self.budget_ref = budget_ref
@@ -649,6 +783,11 @@ class LLMFunnel:
                 if error:
                     payload["error"] = error
                 self._emit("agent", "compact_after", payload, ctx)
+        # Cache axis: observe the outgoing message list after compaction —
+        # a compaction that rewrites history shows up as a prefix break.
+        break_event = self.cache.observe_prefix(messages)
+        if break_event is not None:
+            self._emit("agent", "prefix_break", dict(break_event), ctx)
         return True, "", messages
 
     def post_llm(
@@ -672,8 +811,18 @@ class LLMFunnel:
                 budget.record_usage(prompt_tokens, completion_tokens)
             except Exception as e:
                 logger.warning("budget record_usage failed: %s", e)
+        cache_delta = self.cache.record_usage(usage or {})
         self._emit(
-            "agent", "llm_after", {"node": node_label, "model": model, "usage": usage or {}}, ctx
+            "agent",
+            "llm_after",
+            {
+                "node": node_label,
+                "model": model,
+                "usage": usage or {},
+                "cache": cache_delta,
+                "cache_hit_rate": self.cache.run_snapshot()["hit_rate"],
+            },
+            ctx,
         )
         if self.hooks is not None:
             try:
@@ -709,6 +858,7 @@ class LLMFunnel:
 
 
 __all__ = [
+    "CacheTelemetry",
     "EventDomain",
     "FunnelOutcome",
     "LLMFunnel",

@@ -12,7 +12,7 @@ from fusion_harness.tokens import (
     TokenCounter,
     count_messages,
 )
-from fusion_harness.funnels import LifecycleBus, LLMFunnel, ToolFunnel
+from fusion_harness.funnels import CacheTelemetry, LifecycleBus, LLMFunnel, ToolFunnel
 from fusion_harness.memory_link import MemoryBridge, MemorySink, MemorySource
 from fusion_harness.orchestrator import BackgroundPool, ParallelTeam
 from fusion_harness.artifact_channel import ArtifactStore, SummaryInjector, WorkerDelivery
@@ -189,6 +189,7 @@ __all__ = [
     "Compactor",
     "CheckpointState",
     "CheckpointStore",
+    "CacheTelemetry",
     "CODE_MODE_SYSTEM_PROMPT",
     "CodeExecutor",
     "CodeModeError",
