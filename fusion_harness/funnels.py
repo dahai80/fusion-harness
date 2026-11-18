@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from fusion_harness.destructive_gate import ApprovalGate
 from fusion_harness.permissions import (
     PermissionDecision,
     PermissionEngine,
@@ -209,6 +210,7 @@ class ToolFunnel:
         safety_gateway=None,
         sandbox_policy: SandboxPolicy | None = None,
         security_intel=None,
+        approval_gate=None,
     ):
         self.hooks = hooks
         self.permissions = permissions
@@ -223,6 +225,10 @@ class ToolFunnel:
         # Optional fusion-security intel client (issue #24): advisory hints,
         # graceful no-op offline, decisions pushed back to the audit stream.
         self.security_intel = security_intel
+        # Optional host-owned destructive-call approval gate (issue #73):
+        # destructive calls never execute without a host approval grant,
+        # no matter what the tool server confirmed.
+        self.approval_gate = approval_gate
         self._executions = 0
 
     def set_budget_ref(self, budget_ref) -> None:
@@ -373,6 +379,26 @@ class ToolFunnel:
                         decision_log=log,
                         safety_result=safety_result,
                     )
+
+        # Stage 2c: host-owned destructive approval (issue #73). A tool-
+        # server-side confirmation never substitutes: destructive calls
+        # execute only with a grant minted by the host approval gate.
+        if self.approval_gate is not None:
+            destructive, destructive_reason = ApprovalGate.classify(tool_name, args)
+            if destructive:
+                call_id = str(args.get("call_id") or "")
+                if not call_id or not self.approval_gate.has_grant(call_id):
+                    reason = "destructive call requires host approval (%s)" % (
+                        destructive_reason or "policy table"
+                    )
+                    _mark("approval", "deny", reason)
+                    logger.warning(
+                        "destructive call blocked pending host approval tool=%s call_id=%s",
+                        tool_name,
+                        call_id,
+                    )
+                    return self._deny(ctx, tool_name, args, "approval", log, reason)
+                _mark("approval", "allow", "host grant present")
 
         # Stage 3: token budget.
         budget = None

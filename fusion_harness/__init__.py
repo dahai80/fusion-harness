@@ -5,6 +5,11 @@ Consumers: fusion-agent-studio (shim import), fusion-cowork, fusion-code.
 """
 
 from fusion_harness.checkpoint import CheckpointError, CheckpointState, CheckpointStore
+from fusion_harness.destructive_gate import (
+    TOOL_DESTRUCTIVE_TABLE,
+    ApprovalDecision,
+    ApprovalGate,
+)
 from fusion_harness.compactor import CompactionConfig, Compactor
 from fusion_harness.tokens import (
     CJKAwareHeuristicTokenCounter,
@@ -189,6 +194,9 @@ __all__ = [
     "Compactor",
     "CheckpointError",
     "CheckpointState",
+    "TOOL_DESTRUCTIVE_TABLE",
+    "ApprovalDecision",
+    "ApprovalGate",
     "CheckpointStore",
     "CacheTelemetry",
     "CODE_MODE_SYSTEM_PROMPT",
