@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 _POLICIES = ("block", "continue")
-_QUESTION_STATUSES = ("pending", "answered", "cancelled")
+_QUESTION_STATUSES = ("pending", "answered", "cancelled", "expired")
 
 _REPLY_TYPES = {
     "str": str,
@@ -90,6 +90,8 @@ class HumanQuestion:
     reply: Optional[Dict[str, Any]] = None
     created_at: float = 0.0
     answered_at: float = 0.0
+    requester: str = ""
+    expires_at: float = 0.0
 
     def __post_init__(self) -> None:
         if not self.id or not self.session_id or not self.question:
@@ -144,6 +146,19 @@ class HumanGate:
 
     # ---------- asking ----------
 
+    def _expired(self, q: HumanQuestion) -> bool:
+        return q.expires_at > 0 and self._clock() >= q.expires_at
+
+    def _expire_if_due(self, q: HumanQuestion) -> bool:
+        """Lazy expiry transition: a pending question past its deadline
+        flips to 'expired' (persisted) — no sweeper needed."""
+        if q.status == "pending" and self._expired(q):
+            q.status = "expired"
+            self._persist()
+            logger.info("human question expired id=%s", q.id)
+            return True
+        return False
+
     def ask(
         self,
         session_id: str,
@@ -151,6 +166,8 @@ class HumanGate:
         payload: Optional[Dict[str, Any]] = None,
         reply_schema: Optional[Dict[str, Any]] = None,
         policy: str = "block",
+        requester: str = "",
+        ttl_s: Optional[float] = None,
     ) -> HumanQuestion:
         q = HumanQuestion(
             id="hq_%s" % uuid.uuid4().hex[:8],
@@ -160,6 +177,8 @@ class HumanGate:
             reply_schema=reply_schema or {},
             policy=policy,
             created_at=self._clock(),
+            requester=requester,
+            expires_at=(self._clock() + ttl_s) if ttl_s else 0.0,
         )
         with self._lock:
             self._questions[q.id] = q
@@ -183,7 +202,10 @@ class HumanGate:
                 raise HumanGateError("unknown question: %s" % question_id)
             if q.status == "answered":
                 return q.reply
-            if q.status == "cancelled":
+            if q.status in ("cancelled", "expired"):
+                return None
+            self._expire_if_due(q)
+            if q.status == "expired":
                 return None
             event = self._events.setdefault(question_id, asyncio.Event())
         try:
@@ -201,6 +223,7 @@ class HumanGate:
             q = self._questions.get(question_id)
             if q is None:
                 raise HumanGateError("unknown question: %s" % question_id)
+            self._expire_if_due(q)
             if q.status != "pending":
                 raise HumanGateError("question %s already %s" % (question_id, q.status))
             validated = validate_reply(answer, q.reply_schema)
@@ -237,15 +260,70 @@ class HumanGate:
         logger.info("human question cancelled id=%s", question_id)
         return True
 
+    # ---------- generic queue surface (issue #66) ----------
+
+    def resolve(self, question_id: str, answer: Dict[str, Any]) -> Dict[str, Any]:
+        """Generic single-winner resolve for queue consumers: exactly one
+        concurrent caller wins; everyone else gets resolved=False with a
+        reason (never an exception, unlike reply()). Expired questions
+        reject resolution. Reply validation is the same validate_reply."""
+        with self._lock:
+            q = self._questions.get(question_id)
+            if q is None:
+                return {"resolved": False, "reason": "unknown"}
+            self._expire_if_due(q)
+            if q.status != "pending":
+                return {"resolved": False, "reason": q.status}
+            try:
+                validated = validate_reply(answer, q.reply_schema)
+            except ReplyValidationError as exc:
+                return {"resolved": False, "reason": str(exc)}
+            q.reply = validated
+            q.status = "answered"
+            q.answered_at = self._clock()
+            self._persist()
+            event = self._events.get(question_id)
+        if event is not None:
+            event.set()
+        self._emit(
+            "human_gate.reply",
+            {"id": question_id, "session": q.session_id, "status": "answered"},
+            q.session_id,
+        )
+        logger.info("human question resolved id=%s session=%s", question_id, q.session_id)
+        return {"resolved": True, "reason": "", "reply": validated}
+
+    def list_questions(
+        self,
+        status: Optional[str] = None,
+        requester: Optional[str] = None,
+        session_id: Optional[str] = None,
+    ) -> List[HumanQuestion]:
+        """Generic list for the daemon's pending-question view. Expired
+        pending questions flip to 'expired' lazily on list."""
+        with self._lock:
+            out = []
+            for q in self._questions.values():
+                self._expire_if_due(q)
+                if status is not None and q.status != status:
+                    continue
+                if requester is not None and q.requester != requester:
+                    continue
+                if session_id is not None and q.session_id != session_id:
+                    continue
+                out.append(q)
+            return list(out)
+
     # ---------- inspection ----------
 
     def pending(self, session_id: Optional[str] = None) -> List[HumanQuestion]:
         with self._lock:
-            return [
-                q
-                for q in self._questions.values()
-                if q.status == "pending" and (session_id is None or q.session_id == session_id)
-            ]
+            out = []
+            for q in self._questions.values():
+                self._expire_if_due(q)
+                if q.status == "pending" and (session_id is None or q.session_id == session_id):
+                    out.append(q)
+            return out
 
     def take_reply(self, question_id: str) -> Optional[Dict[str, Any]]:
         """Continue-policy consumption: returns the reply and marks the
@@ -278,3 +356,10 @@ __all__ = [
     "ReplyValidationError",
     "validate_reply",
 ]
+
+# Consumer contract (issue #66): the daemon exposes list/resolve over its
+# RPC surface (list_questions / resolve / reply / cancel) — card UI and
+# approval-routing policies stay consumer-side. Asking agents block on
+# wait() (block policy) or poll take_reply() (continue policy). Questions
+# carry requester + optional ttl_s expiry; expiry is a lazy status
+# transition, expired questions reject resolution loudly-not-silently.
