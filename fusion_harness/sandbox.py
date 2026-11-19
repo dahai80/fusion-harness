@@ -92,11 +92,90 @@ class SandboxPolicy:
         return SandboxDecision(tier=tier)
 
 
+class SandboxRunnerUnavailable(RuntimeError):
+    """Reference runner could not set up isolation (e.g. sandbox-exec
+    missing). Consumers must treat this as deny, never run raw."""
+
+
+# Issue #90 / S1: minimal reference runner for macOS — the POSIX profile
+# forbids file writes outside temp dirs and network. Best-effort: hosts
+# with stricter appetites should ship their own runner and pass the same
+# conformance suite. Consumers on non-mac platforms get
+# SandboxRunnerUnavailable and must deny.
+_SANDBOX_EXEC_PROFILE = (
+    "(version 1)(deny network*)(deny file-write*)(allow file-read*)(allow process*)"
+)
+
+
+class SandboxExecRunner:
+    """Reference SandboxRunner: macOS sandbox-exec with a deny-write/
+    deny-network profile. Pure stdlib. run_sandboxed is async per the
+    SandboxRunner protocol; sandbox-exec absence raises
+    SandboxRunnerUnavailable (fail-closed at the caller)."""
+
+    def __init__(self, timeout_s: float = 30.0) -> None:
+        self.timeout_s = timeout_s
+
+    async def run_sandboxed(self, tool_name: str, args: Dict[str, Any]) -> Any:
+        command = str(args.get("command") or "")
+        if not command:
+            raise SandboxRunnerUnavailable("no command in args for %s" % tool_name)
+        import asyncio
+        import shutil
+
+        binary = shutil.which("sandbox-exec")
+        if binary is None:
+            raise SandboxRunnerUnavailable("sandbox-exec not available on this host")
+        proc = await asyncio.create_subprocess_exec(
+            binary,
+            "-p",
+            _SANDBOX_EXEC_PROFILE,
+            "/bin/sh",
+            "-c",
+            command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=self.timeout_s)
+        except TimeoutError as exc:
+            proc.kill()
+            raise SandboxRunnerUnavailable(
+                "sandboxed call timed out after %.0fs" % self.timeout_s
+            ) from exc
+        if proc.returncode != 0:
+            raise SandboxRunnerUnavailable(
+                "sandboxed call failed rc=%s err=%s"
+                % (proc.returncode, stderr.decode(errors="replace")[:200])
+            )
+        return stdout.decode(errors="replace")
+
+
+def check_runner_conformance(runner: Any) -> list:
+    """Structural conformance checks any SandboxRunner must pass (issue #90
+    S1): async run_sandboxed with the protocol signature. Returns a list of
+    violations — empty means conformant. Behavioral conformance (deny
+    without runner, tier routing, failure-deny) lives in the shared test
+    suite tests/test_sandbox_conformance.py."""
+    violations = []
+    if not callable(getattr(runner, "run_sandboxed", None)):
+        violations.append("run_sandboxed missing or not callable")
+        return violations
+    import inspect
+
+    if not inspect.iscoroutinefunction(runner.run_sandboxed):
+        violations.append("run_sandboxed must be async (protocol returns Awaitable)")
+    return violations
+
+
 __all__ = [
     "ExecutionTier",
     "SandboxRunner",
     "SandboxPolicy",
     "SandboxDecision",
     "RISK_BAND_TIERS",
+    "SandboxExecRunner",
+    "SandboxRunnerUnavailable",
+    "check_runner_conformance",
     "map_risk_to_tier",
 ]

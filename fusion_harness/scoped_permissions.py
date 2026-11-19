@@ -70,6 +70,11 @@ HIGH_RISK_NODES = frozenset(
 
 DECISIONS = ("allow", "deny", "ask")
 
+# Issue #90: permissiveness order for inheritance monotonicity — a child
+# context may never hold a MORE permissive level than its parent. Lower
+# index = more restrictive.
+PERMISSIVENESS = {"confirm": 0, "manual": 1, "auto": 2, "plan": 3, "bypass": 4}
+
 _QUEUE_SESSION = "scoped-permissions"
 _QUEUE_KEY = "pending_approvals"
 
@@ -196,7 +201,62 @@ class ScopedPermissionEngine:
         self._rules: List[ScopedPermission] = []
         self._pending: Dict[str, PendingApproval] = {}
         self._guards: Dict[str, Callable[[str, str], Any]] = {}
+        # Issue #90: floor rules inherited from a parent engine (spawn-time
+        # inherit-not-weaken). Floor denies are re-applied on every check
+        # and cannot be revoked or widened by the child.
+        self._floor_denies: List[ScopedPermission] = []
+        self._floor_level: Optional[str] = None
         self._load_queue()
+
+    # ---------- child inheritance (issue #90) ----------
+
+    def child(
+        self,
+        level: Optional[str] = None,
+        extra_rules: Optional[List[ScopedPermission]] = None,
+    ) -> "ScopedPermissionEngine":
+        """Derive a child engine for a spawned subagent. Monotonic by
+        construction: the child's level is clamped to the parent's (never
+        more permissive), and every parent deny rule is copied in as an
+        irrevocable floor — a spawn attempt that tries to widen
+        restrictions gets the widened part clamped away, not an error."""
+        child_level = self.level
+        if level is not None:
+            requested = level.value if isinstance(level, PermissionLevel) else str(level)
+            if requested not in PERMISSIVENESS:
+                raise ScopedPermissionError("unknown permission level: %s" % requested)
+            parent_rank = PERMISSIVENESS.get(self.level, 0)
+            if PERMISSIVENESS[requested] > parent_rank:
+                logger.warning(
+                    "child level %s widens parent %s — clamped (inherit-not-weaken)",
+                    requested,
+                    self.level,
+                )
+            else:
+                child_level = requested
+        child_engine = ScopedPermissionEngine(level=child_level, clock=self._clock)
+        child_engine._floor_denies = [
+            ScopedPermission(
+                subject=r.subject,
+                level=r.level,
+                scopes=r.scopes,
+                allowed=False,
+                expires_at=r.expires_at,
+            )
+            for r in self._rules
+            if r.allowed is False
+        ]
+        child_engine._floor_level = self.level
+        child_engine.high_risk = self.high_risk
+        for rule in extra_rules or []:
+            child_engine.grant(rule)
+        logger.info(
+            "scoped engine child derived level=%s floor_denies=%d extra=%d",
+            child_level,
+            len(child_engine._floor_denies),
+            len(extra_rules or []),
+        )
+        return child_engine
 
     # ---------- rules ----------
 
@@ -223,6 +283,13 @@ class ScopedPermissionEngine:
                 else:
                     kept.append(rule)
             self._rules = kept
+        if any(r.subject == subject for r in self._floor_denies):
+            # Issue #90: floor denies inherited from a parent are not the
+            # child's to revoke — report the refusal loudly.
+            logger.warning(
+                "revoke refused for floor subject=%s (inherited deny is irrevocable)",
+                subject,
+            )
         logger.info("scoped permission revoked subject=%s removed=%d", subject, removed)
         return removed
 
@@ -236,6 +303,12 @@ class ScopedPermissionEngine:
         moment = self._clock() if now is None else now
         with self._lock:
             snapshot = list(self._rules)
+        # Issue #90: inherited floor denies evaluate before everything — a
+        # child can add rules but never un-deny what the parent denied.
+        for rule in self._floor_denies:
+            if rule.matches(action, resource, moment):
+                logger.info("scoped floor deny (inherited) action=%s", action)
+                return "deny"
         for rule in snapshot:
             if rule.allowed is False and rule.matches(action, resource, moment):
                 logger.info("scoped deny subject=%s action=%s", rule.subject, action)
@@ -345,6 +418,7 @@ class ScopedPermissionEngine:
 __all__ = [
     "DECISIONS",
     "HIGH_RISK_NODES",
+    "PERMISSIVENESS",
     "PermissionLevel",
     "PendingApproval",
     "ScopedPermission",
