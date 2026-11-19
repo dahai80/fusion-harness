@@ -173,12 +173,9 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 - **Fan-out ladder (issue #124)**: `validate_brief` hard-errors when `concurrency` exceeds `FANOUT_HARD_MAX` (20, Anthropic multi-agent ladder: 3-5 simple, 10-15 complex); `fanout_warnings(brief)` (called in `SpawnBrief.__post_init__`, logged) flags out-of-band fan-outs with `TOKEN_MULTIPLIER_WARNING` (~15x single-chat tokens, research agents ~4x coding) — the sanctioned 10-15 complex band stays silent.
 
 ## 20. Artifact-Summary Dual Channel (0.11.0, issue #27)
-
 - `ArtifactStore` writes full worker outputs to `<root>/<run_id>/` and returns lightweight refs; `SummaryInjector.inject_front()` places per-worker summaries + refs at the FRONT of the coordinator context (after the system prefix), idempotent on re-inject (Lost in the Middle: front placement, mid-context recall collapses).
 - Deterministic `default_summarize` fallback; injectable `summarize` callable; summary schema driven by the P2 brief's `output_format`.
-
 ## 21. Playbook Structured Append Protocol (0.11.0, issue #28)
-
 - `PlaybookOp` (add/update/delete, provenance episodes required, typed validation) applied append-first to an append-only op log; `render()` folds deterministically with tombstones (history never rewritten); `trace(entry_id)` returns all originating episodes. Targets ACE failure modes: brevity bias + context collapse (arXiv 2510.04618).
 ## 22. KV-Cache Discipline (0.11.0, issue #29)
 - `assert_stable_prefix(turn_prompts)` flags turns whose prompt does not extend turn 0 byte-identically (lint-style CI hook).
@@ -250,6 +247,7 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 - **Budget meter (#91)**: `LLMFunnel.meter()` — calls, prompt tokens, cache hit rate, failures by kind, fallback signals, loops, budget spend/exceeded; `post_llm(finish_reason, parse_error)` skips billing on parse errors; truncation emits `model_fallback_required`.
 - **Regex guard (#92)**: `regex_guard.guard_search` (pattern/input caps, bounded cache, never raises) wired into permission rules, hook matchers, risk bands, dangerous-pattern scans; `artifact_scan` truncates oversized input with an info finding.
 - **Failure attribution (#93)**: `FailureAnalyzer` with pinned MAST vocabulary (14 modes / 3 clusters); deterministic coarse ranking + injectable pinpointer; unknown modes warn and map to `flawed_reasoning_on_info`. Decisive-moment localization (#123, Who&When): every `FailureVerdict` carries `evidence_distance` (steps from cited evidence to run outcome — consumers discount long-range verdicts) and each run report gains `decisive_moment` {step, agent, distance, reason, score} scored `weight / (1 + distance)` over recorded candidates — no counterfactual replay, zero model calls.
+- **Handoff (edge) failure candidates (issue #132)**: `FailureAnalyzer` run reports carry additive `handoff_candidates` [{from_node, to_node, step, distance, reason}] — for each consecutive node switch, a failure candidate within `HANDOFF_WINDOW` (3) steps after the switch marks the handoff (MAFA blind spot: locally-correct action at node A causing node B's failure); deterministic, no model call, no replay; per-node verdicts and the G4 report shape unchanged (new key only).
 - **Tool spill (#94)**: `ToolOutputSpill` — oversized tool results spill to ArtifactStore (pass-through on store failure), head/tail preview in context, bounded `grep()`/`read()` re-entry with path-escape rejection, per-run spill telemetry.
 - **Loop detection (#95)**: `LoopDetector` sha1 window per surface (thinking/text/tool_args) on `LLMFunnel` + `ToolFunnel`; `llm_loop_detected`/`tool_loop_detected` events count into meter loops/fallback signals.
 - **Cache warming (#96)**: `CacheWarmingGate.decide(PrefixTelemetry)` — warm only when expected prefill saving beats warm cost by `WARM_MARGIN` above reuse/size floors; `warm_list()` + `snapshot()`.

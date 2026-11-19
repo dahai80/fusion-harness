@@ -74,6 +74,11 @@ def cluster_of(mode: MASTMode) -> str:
     return "unclustered"
 
 
+# Issue #132: a failure candidate landing within this many steps after a
+# node switch marks the handoff as a failure candidate (MAFA blind spot:
+# locally-correct action at node A causing node B's failure).
+HANDOFF_WINDOW = 3
+
 # Deterministic keyword -> mode mapping for the no-LLM pinpoint pass.
 _MODE_KEYWORDS = {
     MASTMode.INCORRECT_INFO_TRANSFER: ("contradict", "stale context", "wrong value"),
@@ -179,7 +184,7 @@ class FailureAnalyzer:
         verdicts: List[FailureVerdict] = []
         if not candidates:
             logger.info("failure attribution run=%s no candidates", run_id)
-            return {"verdicts": [], "responsible_agent": ""}
+            return {"verdicts": [], "responsible_agent": "", "handoff_candidates": []}
         last_step = len(recs) - 1
         if self.pinpointer is not None:
             step, mode, confidence, evidence = self.pinpointer(recs, candidates)
@@ -220,11 +225,53 @@ class FailureAnalyzer:
             )
         responsible = verdicts[0].agent if verdicts else ""
         decisive = self._decisive_moment(candidates, last_step)
+        handoffs = self._handoff_candidates(recs, candidates)
         return {
             "verdicts": [v.to_dict() for v in verdicts],
             "responsible_agent": responsible,
             "decisive_moment": decisive,
+            "handoff_candidates": handoffs,
         }
+
+    @staticmethod
+    def _handoff_candidates(
+        recs: List[Any], candidates: List[_Candidate]
+    ) -> List[Dict[str, Any]]:
+        """Issue #132: edge-level (handoff) failure candidates. For each
+        consecutive record pair whose node changes, a failure candidate
+        landing within HANDOFF_WINDOW steps after the switch marks the
+        handoff. Additive output key — per-node analysis unchanged, no
+        model call, no replay."""
+        if not candidates:
+            return []
+
+        def _node(rec: Any) -> str:
+            return getattr(rec, "node_id", "") or getattr(rec, "member", "") or "workflow"
+
+        cand_by_step = {}
+        for c in candidates:
+            cand_by_step.setdefault(c.step, c)
+        out: List[Dict[str, Any]] = []
+        for i in range(1, len(recs)):
+            prev_node, cur_node = _node(recs[i - 1]), _node(recs[i])
+            if prev_node == cur_node:
+                continue
+            for step in range(i, min(i + HANDOFF_WINDOW, len(recs))):
+                cand = cand_by_step.get(step)
+                if cand is not None:
+                    out.append(
+                        {
+                            "from_node": prev_node,
+                            "to_node": cur_node,
+                            "step": i,
+                            "distance": step - i,
+                            "reason": cand.reason,
+                        }
+                    )
+                    break
+        if out:
+            logger.info("handoff candidates found count=%d", len(out))
+        return out
 
     @staticmethod
     def _decisive_moment(candidates: List[_Candidate], last_step: int) -> Dict[str, Any]:
@@ -296,6 +343,7 @@ class FailureAnalyzer:
 
 
 __all__ = [
+    "HANDOFF_WINDOW",
     "MAST_CLUSTERS",
     "MASTMode",
     "FailureAnalyzer",
