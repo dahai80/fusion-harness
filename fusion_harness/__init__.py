@@ -45,6 +45,7 @@ from fusion_harness.team import TeamDefError, TeamDefinition, TeamMember
 from fusion_harness.scoped_permissions import (
     DECISIONS as SCOPED_DECISIONS,
     HIGH_RISK_NODES,
+    PERMISSIVENESS,
     PermissionLevel,
     ScopedPermission,
     ScopedPermissionEngine,
@@ -129,7 +130,15 @@ from fusion_harness.team_runtime import (
     TeamStateError,
     TeamTask,
 )
-from fusion_harness.sandbox import ExecutionTier, SandboxPolicy, SandboxRunner, map_risk_to_tier
+from fusion_harness.sandbox import (
+    ExecutionTier,
+    SandboxExecRunner,
+    SandboxPolicy,
+    SandboxRunner,
+    SandboxRunnerUnavailable,
+    check_runner_conformance,
+    map_risk_to_tier,
+)
 from fusion_harness.security_intel import RiskIntel, RiskIntelClient
 from fusion_harness.skills import (
     STATUS_ACTIVE,
@@ -310,6 +319,10 @@ __all__ = [
     "ScopedPermissionError",
     "SCOPED_DECISIONS",
     "SandboxRunner",
+    "SandboxExecRunner",
+    "SandboxRunnerUnavailable",
+    "check_runner_conformance",
+    "PERMISSIVENESS",
     "map_risk_to_tier",
     "LifecycleBus",
     "LogSchemaError",
