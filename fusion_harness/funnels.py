@@ -212,6 +212,7 @@ class ToolFunnel:
         sandbox_policy: SandboxPolicy | None = None,
         security_intel=None,
         approval_gate=None,
+        provenance_tracker=None,
     ):
         self.hooks = hooks
         self.permissions = permissions
@@ -230,6 +231,10 @@ class ToolFunnel:
         # destructive calls never execute without a host approval grant,
         # no matter what the tool server confirmed.
         self.approval_gate = approval_gate
+        # Optional provenance tracker (issue #97): CaMeL-style taint tags
+        # on tool results. Opt-in — unwired means zero behavior change.
+        # Consulted AFTER the permission engine: it can only narrow.
+        self.provenance_tracker = provenance_tracker
         # Optional loop detector (issue #95): repetition over tool-call
         # args is a budget leak — observed once the call is admitted.
         self.loop_detector = None
@@ -404,6 +409,28 @@ class ToolFunnel:
                     return self._deny(ctx, tool_name, args, "approval", log, reason)
                 _mark("approval", "allow", "host grant present")
 
+        # Stage 2d: provenance policy (issue #97) — narrow-only, runs after
+        # the permission engine so it can deny/ask but never widen a deny.
+        if self.provenance_tracker is not None:
+            try:
+                verdict, prov_reason, _ = self.provenance_tracker.check_outbound(tool_name, args)
+            except Exception as e:
+                logger.warning("provenance check error tool=%s err=%s", tool_name, e)
+                verdict, prov_reason = "allow", ""
+            if verdict == "deny":
+                _mark("provenance", "deny", prov_reason)
+                return self._deny(ctx, tool_name, args, "provenance", log, prov_reason)
+            if verdict == "ask":
+                _mark("provenance", "ask", prov_reason)
+                return FunnelOutcome(
+                    allowed=False,
+                    blocked_by="provenance",
+                    reason=prov_reason,
+                    args=args,
+                    needs_approval=True,
+                    decision_log=log,
+                )
+
         # Issue #95: admitted-call args repetition — observed before the
         # budget stage counts the spend.
         if self.loop_detector is not None:
@@ -558,6 +585,16 @@ class ToolFunnel:
         result_str = str(result)
         is_error = result_str.startswith("Error:")
         self._executions += 1
+        # Issue #97: tag the result at birth (O(1) metadata sidecar) and
+        # record bounded snippets for downstream taint propagation.
+        if self.provenance_tracker is not None:
+            try:
+                prov = self.provenance_tracker.tag(
+                    tool_name, outcome.args, call_id=str(outcome.args.get("call_id") or "")
+                )
+                self.provenance_tracker.observe_result(prov, result_str)
+            except Exception as e:
+                logger.warning("provenance tag failed tool=%s err=%s", tool_name, e)
         if self.security_intel is not None:
             await self.security_intel.push_decision(tool_name, "allow", reason=result_str[:200])
         await self.record_result(ctx, tool_name, args, result_str, is_error, node_label)

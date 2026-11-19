@@ -183,6 +183,16 @@ from fusion_harness.permissions import (
     score_tool_risk,
 )
 from fusion_harness.stream_guard import SURFACES as LOOP_SURFACES, LoopDetector
+from fusion_harness.provenance import (
+    EXFIL_CAPABLE,
+    ORIGIN_DERIVED,
+    ORIGIN_EXTERNAL,
+    ORIGIN_USER_INPUT,
+    TAINT_EXTERNAL_CONTENT,
+    TAINT_PRIVATE_DATA,
+    Provenance,
+    ProvenanceTracker,
+)
 from fusion_harness.session_log import (
     LogSchemaError,
     SessionEvent,
@@ -348,6 +358,14 @@ __all__ = [
     "LifecycleBus",
     "LoopDetector",
     "LOOP_SURFACES",
+    "EXFIL_CAPABLE",
+    "ORIGIN_DERIVED",
+    "ORIGIN_EXTERNAL",
+    "ORIGIN_USER_INPUT",
+    "TAINT_EXTERNAL_CONTENT",
+    "TAINT_PRIVATE_DATA",
+    "Provenance",
+    "ProvenanceTracker",
     "LogSchemaError",
     "MonotonicGuard",
     "OutboxStore",
