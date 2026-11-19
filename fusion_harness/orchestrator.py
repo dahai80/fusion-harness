@@ -15,7 +15,7 @@ module adds zero policy — it only shapes concurrency.
 
 import asyncio
 import logging
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from fusion_harness.subagent import AgentFn, SubagentResult, SubagentRunner, SubagentSpec
 
@@ -64,8 +64,20 @@ class BackgroundPool:
 
 
 class ParallelTeam:
-    def __init__(self, runner: SubagentRunner) -> None:
+    def __init__(
+        self,
+        runner: SubagentRunner,
+        phase_evaluator: Optional[Callable] = None,
+        lifecycle_bus=None,
+    ) -> None:
         self.runner = runner
+        # Issue #133: opt-in evaluator checkpoints (Anthropic multi-agent
+        # research system). Invoked after the member phase with the results;
+        # a failing verdict (exception or falsy) marks the team outcome
+        # blocked and emits `team_evaluator_block` — it never raises through
+        # member code paths. None = no model call, no behavior change.
+        self.phase_evaluator = phase_evaluator
+        self.lifecycle_bus = lifecycle_bus
 
     async def run(
         self,
@@ -95,8 +107,53 @@ class ParallelTeam:
             else:
                 results.append(item)
         failed = sum(1 for r in results if r.status == "failed")
+        self._evaluate_phase(results, failed)
         logger.info("team done members=%d failed=%d", len(results), failed)
         return results
+
+    def _evaluate_phase(self, results: List[SubagentResult], failed: int) -> None:
+        """Issue #133: run the optional phase evaluator over the results.
+        A failing verdict marks surviving member outcomes 'blocked' and
+        emits `team_evaluator_block`; evaluator errors are treated as a
+        failing verdict (fail-safe, observational — never re-raised)."""
+        if self.phase_evaluator is None:
+            return
+        ok, verdict = True, ""
+        try:
+            result = self.phase_evaluator(results)
+            if isinstance(result, dict):
+                ok, verdict = bool(result.get("ok", True)), str(result.get("reason", ""))
+            else:
+                ok = bool(result)
+        except Exception as exc:
+            ok, verdict = False, "evaluator error: %s" % str(exc)[:200]
+            logger.warning("phase evaluator raised: %s", exc)
+        if ok:
+            logger.info("phase evaluator ok")
+            return
+        blocked = 0
+        for r in results:
+            if r.status != "failed":
+                r.status = "blocked"
+                blocked += 1
+        logger.error(
+            "phase evaluator blocked team: verdict=%s blocked=%d failed=%d",
+            verdict,
+            blocked,
+            failed,
+        )
+        self._emit(
+            "team_evaluator_block",
+            {"verdict": verdict, "blocked": blocked, "failed": failed},
+        )
+
+    def _emit(self, event: str, payload: dict) -> None:
+        if self.lifecycle_bus is None:
+            return
+        try:
+            self.lifecycle_bus.emit("orchestrator", event, payload, session_id="")
+        except Exception as exc:
+            logger.warning("lifecycle %s emit failed: %s", event, exc)
 
 
 __all__ = ["BackgroundPool", "ParallelTeam"]

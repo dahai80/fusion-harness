@@ -15,7 +15,6 @@ source_of_truth:
 ---
 
 # fusion-harness Kernel Contract
-
 Version: 1.0 (matches fusion-harness 0.2.0) — the behavior every runtime built on this kernel (Python consumers directly, the TypeScript implementation in fusion-code) must reproduce. Tests in this repo are the executable form of this contract.
 
 ## 1. Funnel Semantics
@@ -160,6 +159,7 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 
 - `BackgroundPool(runner).spawn(spec, agent_fn) -> Task` + `collect() -> [SubagentResult]`; `ParallelTeam(runner).run(specs, agent_fn) -> [SubagentResult]` fans out concurrently. Both are thin concurrency shapes over `SubagentRunner` — summary-only return, mode narrowing, and budget isolation are inherited, never re-implemented.
 - One member failing never cancels siblings; failures come back as `status="failed"` results. Workflow/DAG orchestration stays consumer-side (fusion-cowork owns the DAG engine); anything needing model judgment stays consumer-side.
+- `ParallelTeam(runner, phase_evaluator=...)` (0.26.0, issue #133): after the member phase, the opt-in evaluator receives the results; a falsy verdict, `{"ok": false, "reason": ...}` dict, or evaluator exception marks surviving member outcomes `blocked` and emits `team_evaluator_block` {verdict, blocked, failed}. Fail-safe — never re-raised; unwired = no model call, no change.
 
 ## 18. Security Intel Loop (0.10.1, issue #24)
 
