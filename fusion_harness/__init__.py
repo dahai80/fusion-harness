@@ -213,6 +213,13 @@ from fusion_harness.policy_engine import (
     policy_from_artifact,
     validate_policy,
 )
+from fusion_harness.team_topology import (
+    TOPOLOGY_BANK,
+    TopologyError,
+    TopologySelector,
+    TopologySpec,
+    TopologyTelemetry,
+)
 from fusion_harness.session_log import (
     LogSchemaError,
     SessionEvent,
@@ -402,6 +409,11 @@ __all__ = [
     "policy_diff",
     "policy_from_artifact",
     "validate_policy",
+    "TOPOLOGY_BANK",
+    "TopologyError",
+    "TopologySelector",
+    "TopologySpec",
+    "TopologyTelemetry",
     "LogSchemaError",
     "MonotonicGuard",
     "OutboxStore",
