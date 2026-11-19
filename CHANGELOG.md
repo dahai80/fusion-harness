@@ -7,14 +7,96 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.22.0
-updated: 2026-11-18
+version: 0.23.0
+updated: 2026-11-19
 owner: "@dahai"
 source_of_truth:
   - CHANGELOG.md
 ---
 
 # Changelog
+
+## 0.23.0 (2026-11-19)
+
+Reliability + observability batch — issues #88-#96, plus design docs
+for the review-gated batch #97-#101.
+
+### Summary refusals + failure stats (issue #88)
+
+- `Compactor._summarize_via_mlx` classifies empty/refusal LLM output
+  (`_REFUSAL_PATTERNS`, `_classify_summary_failure`), retries once with a
+  neutral reworded prompt, falls back to the deterministic summarizer on
+  the second failure with a `compaction_fallback` event;
+  `Compactor.failure_stats` (llm_calls/refusals/empties/retries/
+  fallbacks) + `failure_rate()`; sync `compact()` now routes MLX
+  summarization when a gateway is wired; `evals/compact_bench.py` report
+  carries `compaction_failures` + `compaction_failure_rate`.
+
+### Monotonic child permissions (issue #89)
+
+- `ScopedPermissionEngine.child(level, extra_rules)` clamps a wider
+  requested level to the parent's permissiveness (`PERMISSIVENESS`
+  ranking) with a warning; more-restrictive levels honored; parent deny
+  rules copied as an immune floor (`revoke()` skips them); high-risk
+  inheritance unchanged.
+
+### Fail-closed hook resume (issue #90)
+
+- `HookEngine` pre-tool hooks that raised are re-armed on resume; the
+  resumed call re-runs the full admit chain instead of inheriting a
+  stale pass (tests cover deny-then-resume, error-then-resume, command
+  hooks staying blocked without the env opt-in).
+
+### Budget meter + failure modes (issues #91, #92)
+
+- `LLMFunnel.meter()` — calls, prompt tokens, cache hit rate, failures
+  by kind (`parse_error`/`truncation`/`other`), failure rate, fallback
+  signals, loops, budget spend/exceeded; `post_llm` gains
+  `finish_reason`/`parse_error`, billing skips parse-error payloads;
+  truncation emits `model_fallback_required`.
+
+### ReDoS-guarded regex surfaces (issue #92)
+
+- `fusion_harness.regex_guard.guard_search` — pattern/input caps, bounded
+  compile cache, never raises; wired into `PermissionRule.matches`,
+  hook matchers, risk bands, and dangerous-pattern scans;
+  `artifact_scan` truncates oversized scan input with an info finding.
+
+### Failure attribution (issue #93)
+
+- `FailureAnalyzer` with pinned MAST vocabulary (14 modes, 3 clusters,
+  `MASTMode`/`MAST_CLUSTERS`/`cluster_of`); deterministic coarse
+  ranking (error weight > failure keywords > repeated identical calls)
+  plus injectable pinpointer; unknown pinpointer modes warn and map to
+  `flawed_reasoning_on_info`.
+
+### Tool-output spill + grep-back (issue #94)
+
+- `ToolOutputSpill` — oversized tool results spill to ArtifactStore
+  (pass-through with `spill_error` on store failure), head/tail preview
+  in context, `grep()`/`read()` bounded re-entry with path-escape
+  rejection, per-run spill telemetry.
+
+### Stream loop detection + fallback signals (issue #95)
+
+- `LoopDetector` (sha1 window, per-surface: thinking/text/tool_args)
+  on `LLMFunnel` and `ToolFunnel`; `llm_loop_detected` /
+  `tool_loop_detected` events; repeated content counts into the meter's
+  `loops_detected` and `fallback_signals`.
+
+### Cache-warming payback gate (issue #96)
+
+- `CacheWarmingGate.decide(PrefixTelemetry)` — warming recommended only
+  when expected prefill saving beats the warm cost by `WARM_MARGIN`,
+  with minimum prefix size and reuse-rate floors; `observe_and_decide`
+  for batches, `warm_list()` + `snapshot()` telemetry.
+
+### Design docs (issues #97-#101)
+
+- Design-only documents under `docs/design/` (CaMeL provenance tags,
+  Progent policy-as-artifact, proactive consolidation, memory
+  consolidation ops, topology scheduling) — implementation gated on
+  design review.
 
 ## 0.22.0 (2026-11-18)
 
