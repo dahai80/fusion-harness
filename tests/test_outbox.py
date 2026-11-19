@@ -18,7 +18,8 @@ from pathlib import Path
 
 import pytest
 
-from fusion_harness import OutboxStore, ReceiptReplayed, ReconcileReport
+from fusion_harness import OutboxStore
+from fusion_harness.outbox import ReceiptReplayed, ReconcileReport
 
 
 class FakeClock:

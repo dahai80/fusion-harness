@@ -82,12 +82,7 @@ from fusion_harness.trajectory import (
     normalize_record,
 )
 from fusion_harness.handoff_verify import (
-    HandoffVerifyError,
-    HandoffVerification,
-    claims_for_transport,
     ledger_for_transport,
-    verify_handoff,
-    verify_spawn_brief,
 )
 from fusion_harness.compaction_archive import (
     CompactionArchive,
@@ -114,15 +109,6 @@ from fusion_harness.failure_attribution import (
     FailureAnalyzer,
     FailureVerdict,
     cluster_of,
-)
-from fusion_harness.file_segment import (
-    DEFAULT_MAX_BYTES_CAP,
-    SegmentBudget,
-    SegmentError,
-    SegmentPolicy,
-    read_segment,
-    render_segment_result,
-    segment_header,
 )
 from fusion_harness.human_gate import (
     HumanGate,
@@ -157,15 +143,11 @@ from fusion_harness.skills import (
     STATUS_ARCHIVED,
     STATUS_CANARY,
     Skill,
-    SkillCase,
     SkillError,
-    SkillLibrary,
-    SkillScanError,
     SkillRegistry,
-    SkillVersion,
     parse_skill,
 )
-from fusion_harness.subagent import SubagentResult, SubagentRunner, SubagentSession, SubagentSpec
+from fusion_harness.subagent import SubagentRunner, SubagentSpec
 from fusion_harness.pipeline import (
     MonotonicGuard,
     PipelineBlocked,
@@ -235,23 +217,11 @@ from fusion_harness.team_topology import (
 )
 from fusion_harness.session_log import (
     LogSchemaError,
-    SessionEvent,
     SessionEventLog,
-    SessionState,
-)
-from fusion_harness.provider import (
-    AdapterHost,
-    ProviderAdapter,
-    RuntimeNotReady,
-    SubprocessSessionRuntime,
-    SessionEvent as ProviderSessionEvent,
-    SessionState as ProviderSessionState,
 )
 from fusion_harness.outbox import (
     Effect,
     OutboxStore,
-    ReceiptReplayed,
-    ReconcileReport,
 )
 from fusion_harness.policies import (
     Deadline,
@@ -295,17 +265,11 @@ __all__ = [
     "STATUS_ARCHIVED",
     "STATUS_CANARY",
     "Skill",
-    "SkillCase",
     "SkillError",
-    "SkillScanError",
-    "SkillLibrary",
     "SkillRegistry",
-    "SkillVersion",
-    "SubagentResult",
     "SubagentRunner",
     "BackgroundPool",
     "ParallelTeam",
-    "SubagentSession",
     "SubagentSpec",
     "parse_skill",
     "HeuristicTokenCounter",
@@ -322,8 +286,6 @@ __all__ = [
     "HookConfig",
     "HookEngine",
     "HookResult",
-    "HandoffVerifyError",
-    "HandoffVerification",
     "LLMFunnel",
     "ExecutionTier",
     "MemoryBridge",
@@ -380,7 +342,6 @@ __all__ = [
     "mark_discardable",
     "normalize_record",
     "HIGH_RISK_NODES",
-    "DEFAULT_MAX_BYTES_CAP",
     "HumanGate",
     "HumanGateError",
     "HumanQuestion",
@@ -447,23 +408,10 @@ __all__ = [
     "PermissionRule",
     "PipelineBlocked",
     "PipelineOutcome",
-    "ProviderAdapter",
-    "ProviderSessionEvent",
-    "ProviderSessionState",
-    "AdapterHost",
-    "SubprocessSessionRuntime",
-    "RuntimeNotReady",
     "ReceiptCache",
-    "SegmentBudget",
-    "SegmentError",
-    "SegmentPolicy",
-    "ReceiptReplayed",
     "ReplyValidationError",
-    "ReconcileReport",
     "RetryPolicy",
-    "SessionEvent",
     "SessionEventLog",
-    "SessionState",
     "TokenLedger",
     "ToolFunnel",
     "ToolPipeline",
@@ -477,10 +425,7 @@ __all__ = [
     "render_stubs",
     "run_with_retry",
     "score_tool_risk",
-    "claims_for_transport",
     "ledger_for_transport",
-    "verify_handoff",
-    "verify_spawn_brief",
     "CompactionArchive",
     "DanglingLinkError",
     "JSONRepairError",
@@ -490,8 +435,5 @@ __all__ = [
     "cite_link",
     "extract_links",
     "rehydrate",
-    "read_segment",
-    "render_segment_result",
-    "segment_header",
     "validate_reply",
 ]
