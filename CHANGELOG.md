@@ -7,7 +7,7 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.24.0
+version: 0.25.0
 updated: 2026-11-19
 owner: "@dahai"
 source_of_truth:
@@ -15,6 +15,55 @@ source_of_truth:
 ---
 
 # Changelog
+
+## 0.25.0 (2026-11-19)
+
+Round-3 practices batch: sidecar embedding, observability loop, policy
+knobs from the 2026-11-19 agent-practices survey (#122-#125), plus the
+wire-or-demote export sweep.
+
+### Sidecar protocol v1 (issue #110)
+
+- `fusion_harness.sidecar`: stdio JSON-RPC kernel embedding — external
+  hosts drive the harness over a versioned protocol with a conformance
+  suite.
+
+### Observability loop (G4)
+
+- Failure attribution events roll up to an (agent, step, mode) report so
+  runs feed their own verdicts back into scheduling.
+
+### Threshold-triggered compaction (issue #122)
+
+- `CompactionConfig.trigger_ratio` (default None = consumer-invoked):
+  `trigger_threshold()` + `should_auto_compact(tokens)` give
+  LLMFunnel/sidecar a single auto-trigger policy (~80-92% of window per
+  Anthropic/Manus practice); ratios outside (0.0, 1.0] raise.
+
+### Decisive-moment localization (issue #123)
+
+- `FailureVerdict.evidence_distance` (steps from cited evidence to run
+  outcome) + per-run `decisive_moment` {step, agent, distance, reason,
+  score} scored `weight / (1 + distance)` over recorded trajectory
+  candidates — Who&When without counterfactual replay.
+
+### Fan-out budget ladder (issue #124)
+
+- `validate_brief` hard-errors above `FANOUT_HARD_MAX` (20);
+  `fanout_warnings` flags out-of-band concurrency with the ~15x
+  token-multiplier warning; the sanctioned 10-15 complex band is silent.
+
+### Durable awaiting_human checkpoints (issue #125)
+
+- `HumanGate(checkpoint_ref=<CheckpointStore>)` mirrors pending questions
+  as checkpoint entries under the `awaiting_human` state marker;
+  answer/cancel update the same seq in place; checkpoint failure keeps
+  the JSON queue authoritative.
+
+### Wire-or-demote export sweep
+
+- Zero-consumer surface demoted from root exports per the G rulings;
+  `fusion_harness.__init__` now carries only wired names.
 
 ## 0.24.0 (2026-11-19)
 
