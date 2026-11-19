@@ -35,6 +35,7 @@ from fusion_harness.permissions import (
     score_tool_risk,
 )
 from fusion_harness.sandbox import ExecutionTier, SandboxPolicy
+from fusion_harness.stream_guard import LoopDetector
 
 logger = logging.getLogger(__name__)
 
@@ -229,6 +230,9 @@ class ToolFunnel:
         # destructive calls never execute without a host approval grant,
         # no matter what the tool server confirmed.
         self.approval_gate = approval_gate
+        # Optional loop detector (issue #95): repetition over tool-call
+        # args is a budget leak — observed once the call is admitted.
+        self.loop_detector = None
         self._executions = 0
 
     def set_budget_ref(self, budget_ref) -> None:
@@ -399,6 +403,13 @@ class ToolFunnel:
                     )
                     return self._deny(ctx, tool_name, args, "approval", log, reason)
                 _mark("approval", "allow", "host grant present")
+
+        # Issue #95: admitted-call args repetition — observed before the
+        # budget stage counts the spend.
+        if self.loop_detector is not None:
+            loop_event = self.loop_detector.observe("tool_args", {"tool": tool_name, "args": args})
+            if loop_event is not None:
+                self._emit("agent", "tool_loop_detected", dict(loop_event), ctx)
 
         # Stage 3: token budget.
         budget = None
@@ -736,6 +747,11 @@ class LLMFunnel:
         # Issue #91: failure-mode counts — parse errors and truncations are
         # separately observable, never masked as each other.
         self.failures = {"parse_error": 0, "truncation": 0, "other": 0}
+        # Issue #95: stream loop detection (text surface here; tool_args on
+        # ToolFunnel when wired) + output-limit fallback signal count.
+        self.loop_detector = LoopDetector()
+        self.fallback_signals = 0
+        self.loops_detected = 0
 
     # ---------- failure-mode telemetry + meter (issue #91) ----------
 
@@ -790,6 +806,8 @@ class LLMFunnel:
             "cache_hit_rate": snap["hit_rate"],
             "failures": dict(self.failures),
             "failure_rate": round(failed / self.calls, 6) if self.calls else 0.0,
+            "fallback_signals": self.fallback_signals,
+            "loops_detected": self.loops_detected,
             "budget_spent_tokens": getattr(budget, "spent_tokens", None),
             "budget_exceeded": bool(budget is not None and _budget_exceeded(budget, "")),
         }
@@ -918,9 +936,31 @@ class LLMFunnel:
         # Issue #91: parse-error vs truncation are separately counted — a
         # failed parse on a billed call never masks as truncation.
         if parse_error or finish_reason:
-            self.record_outcome(
+            kind = self.record_outcome(
                 content=content, finish_reason=finish_reason, parse_error=parse_error
             )
+            # Issue #95: a call that never finished (output-token limit) is
+            # a typed fallback signal for the host — repair (json_repair)
+            # handles malformed JSON, fallback handles truncation.
+            if kind == "truncation":
+                self.fallback_signals += 1
+                self._emit(
+                    "agent",
+                    "model_fallback_required",
+                    {
+                        "node": node_label,
+                        "model": model,
+                        "reason": "output_token_limit",
+                        "finish_reason": finish_reason,
+                    },
+                    ctx,
+                )
+        # Issue #95: text-surface repetition — a loop is a budget leak.
+        if content:
+            loop_event = self.loop_detector.observe("text", content)
+            if loop_event is not None:
+                self.loops_detected += 1
+                self._emit("agent", "llm_loop_detected", dict(loop_event), ctx)
         if self.hooks is not None:
             try:
                 import asyncio
