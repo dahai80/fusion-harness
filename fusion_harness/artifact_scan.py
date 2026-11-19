@@ -75,6 +75,11 @@ CREDENTIAL_PATTERNS = (
 
 ALL_RULES = INJECTION_PATTERNS + CREDENTIAL_PATTERNS
 
+# Issue #92: input-size cap before matching — with the fixed pattern set,
+# scan cost is bounded O(MAX_SCAN_INPUT_BYTES) per artifact regardless of
+# subject content (ReDoS defense alongside tests/test_regex_hardening.py).
+MAX_SCAN_INPUT_BYTES = 262144
+
 
 @dataclass
 class ScanReport:
@@ -90,10 +95,28 @@ class ScanReport:
 def scan_artifact(text: str, source: str = "", kind: str = "memory") -> ScanReport:
     """Single-pass regex scan of an artifact about to be loaded into a
     prompt or written to memory. Never raises; findings carry an English
-    rule name + bounded excerpt for operator review."""
+    rule name + bounded excerpt for operator review. Issue #92: subjects
+    over MAX_SCAN_INPUT_BYTES are truncated before matching (bounded
+    scan cost) with a loud meta finding — oversize alone never silently
+    skips the gate."""
     findings: List[Dict[str, Any]] = []
     if not text:
         return ScanReport(clean=True, source=source, kind=kind)
+    if len(text) > MAX_SCAN_INPUT_BYTES:
+        logger.warning(
+            "artifact scan input truncated len=%d cap=%d source=%s",
+            len(text),
+            MAX_SCAN_INPUT_BYTES,
+            source,
+        )
+        findings.append(
+            {
+                "rule": "input_truncated",
+                "severity": "info",
+                "excerpt": "subject exceeded scan cap; tail not scanned",
+            }
+        )
+        text = text[:MAX_SCAN_INPUT_BYTES]
     for rule, pattern in ALL_RULES:
         match = pattern.search(text)
         if match:
@@ -107,7 +130,10 @@ def scan_artifact(text: str, source: str = "", kind: str = "memory") -> ScanRepo
             kind,
             ",".join(f["rule"] for f in findings),
         )
-    return ScanReport(clean=not findings, source=source, kind=kind, findings=findings)
+    # Meta findings (severity=info) do not dirty the report — only real
+    # rule hits make it unclean.
+    clean = not any(f["severity"] != "info" for f in findings)
+    return ScanReport(clean=clean, source=source, kind=kind, findings=findings)
 
 
 class ArtifactQuarantine:

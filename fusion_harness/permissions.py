@@ -91,11 +91,10 @@ class PermissionRule:
     def matches(self, tool_name: str) -> bool:
         if not self.tool or self.tool == "*":
             return True
-        try:
-            return re.search(self.tool, tool_name) is not None
-        except re.error as exc:
-            logger.warning("invalid rule regex tool=%r error=%s", self.tool, exc)
-            return False
+        # Issue #92: host-supplied rule regex through the ReDoS guard.
+        from fusion_harness.regex_guard import guard_search
+
+        return guard_search(self.tool, tool_name or "")
 
     def matches_role(self, ctx_role: str) -> bool:
         if not self.roles or "all" in self.roles:
@@ -202,15 +201,17 @@ _WRITE_TOOL_RE = (
 def score_tool_risk(tool_name: str, args: Any) -> tuple[float, str]:
     # Single deterministic risk scorer: first matching band wins (highest
     # band checked first). Returns (score, band) for audit trails.
+    from fusion_harness.regex_guard import guard_search
+
     blob = _serialize_args(args)
     for pattern in _DESTRUCTIVE_BAND_RE:
-        if re.search(pattern, blob, re.IGNORECASE):
+        if guard_search(pattern, blob, re.IGNORECASE):
             return RISK_DESTRUCTIVE, "destructive"
     for pattern in _NETWORK_BAND_RE:
-        if re.search(pattern, blob, re.IGNORECASE):
+        if guard_search(pattern, blob, re.IGNORECASE):
             return RISK_NETWORK, "network"
     for pattern in _WRITE_TOOL_RE:
-        if re.search(pattern, tool_name, re.IGNORECASE):
+        if guard_search(pattern, tool_name, re.IGNORECASE):
             return RISK_WRITE, "write"
     return RISK_READONLY, "readonly"
 
@@ -230,14 +231,13 @@ class ConfirmationPolicy:
             self.tier = "risk"
 
     def tier_for(self, tool_name: str) -> str:
+        from fusion_harness.regex_guard import guard_search
+
         for pattern, tier in self.tool_overrides.items():
             if tier not in CONFIRMATION_TIERS:
                 continue
-            try:
-                if re.search(pattern, tool_name):
-                    return tier
-            except re.error as exc:
-                logger.warning("invalid tool_overrides regex %r: %s", pattern, exc)
+            if guard_search(pattern, tool_name):
+                return tier
         return self.tier
 
     def to_dict(self) -> dict:
@@ -492,8 +492,10 @@ class PermissionEngine:
             )
 
         blob = _serialize_args(args)
+        from fusion_harness.regex_guard import guard_search
+
         for pattern in DANGEROUS_PATTERNS:
-            if re.search(pattern, blob, re.IGNORECASE):
+            if guard_search(pattern, blob, re.IGNORECASE):
                 logger.warning("content scan blocked tool=%s pattern=%s", tool_name, pattern)
                 self._stats["denies"] += 1
                 return PermissionDecision(
