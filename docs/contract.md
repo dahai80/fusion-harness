@@ -170,6 +170,7 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 
 - `SpawnBrief` carries objective / output_format / tool_guidance / boundaries / token_budget / concurrency / depth; `validate_brief()` is a pure function and `brief_from_event()` raises typed `SpawnBriefError` on incomplete payloads — vague briefs are bugs, fail visibly. `depth <= 3` is an orchestration-ladder guard.
 - `EffortTierConfig.resolve(estimated_tool_calls)` is deterministic (no model call): <=3 calls means 1 agent; 3-10 means 2-4 subagents with explicit responsibilities; >10 means 10+ split. Rules are config, not lead-prompt improvisation.
+- **Fan-out ladder (issue #124)**: `validate_brief` hard-errors when `concurrency` exceeds `FANOUT_HARD_MAX` (20, Anthropic multi-agent ladder: 3-5 simple, 10-15 complex); `fanout_warnings(brief)` (called in `SpawnBrief.__post_init__`, logged) flags out-of-band fan-outs with `TOKEN_MULTIPLIER_WARNING` (~15x single-chat tokens, research agents ~4x coding) — the sanctioned 10-15 complex band stays silent.
 
 ## 20. Artifact-Summary Dual Channel (0.11.0, issue #27)
 

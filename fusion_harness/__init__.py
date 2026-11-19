@@ -47,9 +47,15 @@ from fusion_harness.playbook import (
     PlaybookOp,
 )
 from fusion_harness.spawn_protocol import (
+    FANOUT_COMPLEX_MAX,
+    FANOUT_HARD_MAX,
+    FANOUT_SIMPLE_MAX,
+    MULTI_AGENT_TOKEN_MULTIPLIER,
+    TOKEN_MULTIPLIER_WARNING,
     SpawnBrief,
     SpawnBriefError,
     brief_from_event,
+    fanout_warnings,
     validate_brief,
 )
 from fusion_harness.team import (
@@ -171,6 +177,12 @@ __all__ = [
     "SpawnBriefError",
     "validate_brief",
     "brief_from_event",
+    "fanout_warnings",
+    "FANOUT_SIMPLE_MAX",
+    "FANOUT_COMPLEX_MAX",
+    "FANOUT_HARD_MAX",
+    "MULTI_AGENT_TOKEN_MULTIPLIER",
+    "TOKEN_MULTIPLIER_WARNING",
     "ArtifactStore",
     "SummaryInjector",
     "WorkerDelivery",

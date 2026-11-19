@@ -30,6 +30,19 @@ REQUIRED_FIELDS = (
     "depth",
 )
 
+# Issue #124: empirically derived fan-out ladder (Anthropic multi-agent
+# research system): 3-5 subagents for simple objectives, 10-15 for complex,
+# hard max 20; multi-agent runs cost ~15x single-chat tokens (research
+# agents ~4x coding agents). Deterministic check, no model call.
+FANOUT_SIMPLE_MAX = 5
+FANOUT_COMPLEX_MAX = 15
+FANOUT_HARD_MAX = 20
+MULTI_AGENT_TOKEN_MULTIPLIER = 15
+TOKEN_MULTIPLIER_WARNING = (
+    "multi-agent fan-out costs ~%dx single-chat tokens (research agents ~4x "
+    "coding agents) — budget accordingly" % MULTI_AGENT_TOKEN_MULTIPLIER
+)
+
 
 @dataclass
 class SpawnBrief:
@@ -46,6 +59,7 @@ class SpawnBrief:
         errors = validate_brief(self)
         if errors:
             raise SpawnBriefError("incomplete spawn brief: " + "; ".join(errors))
+        fanout_warnings(self)
 
 
 def validate_brief(brief: Any) -> List[str]:
@@ -62,7 +76,38 @@ def validate_brief(brief: Any) -> List[str]:
             errors.append("%s must be a positive integer" % name)
     if getattr(brief, "depth", 0) and getattr(brief, "depth", 0) > 3:
         errors.append("depth must be <= 3 (orchestration ladder guard)")
+    concurrency = getattr(brief, "concurrency", 0)
+    if (
+        isinstance(concurrency, int)
+        and not isinstance(concurrency, bool)
+        and concurrency > FANOUT_HARD_MAX
+    ):
+        errors.append(
+            "concurrency %d exceeds fan-out hard max %d (Anthropic multi-agent ladder)"
+            % (concurrency, FANOUT_HARD_MAX)
+        )
     return errors
+
+
+def fanout_warnings(brief: Any) -> List[str]:
+    """Issue #124: non-fatal fan-out guidance. Returns warnings (empty = in
+    band) — validate_brief still hard-errors above FANOUT_HARD_MAX."""
+    warnings = []
+    concurrency = getattr(brief, "concurrency", 0)
+    if isinstance(concurrency, int) and not isinstance(concurrency, bool):
+        if concurrency > FANOUT_COMPLEX_MAX:
+            warnings.append(
+                "concurrency %d above the complex-objective band (10-%d); %s"
+                % (concurrency, FANOUT_COMPLEX_MAX, TOKEN_MULTIPLIER_WARNING)
+            )
+        elif FANOUT_SIMPLE_MAX < concurrency < 10:
+            warnings.append(
+                "concurrency %d between the simple (%d) and complex (10-%d) bands; %s"
+                % (concurrency, FANOUT_SIMPLE_MAX, FANOUT_COMPLEX_MAX, TOKEN_MULTIPLIER_WARNING)
+            )
+    for warning in warnings:
+        logger.warning("fanout guidance: %s", warning)
+    return warnings
 
 
 def brief_from_event(payload: Dict[str, Any]) -> SpawnBrief:
@@ -145,10 +190,16 @@ class EffortTierConfig:
 
 
 __all__ = [
+    "FANOUT_COMPLEX_MAX",
+    "FANOUT_HARD_MAX",
+    "FANOUT_SIMPLE_MAX",
+    "MULTI_AGENT_TOKEN_MULTIPLIER",
+    "TOKEN_MULTIPLIER_WARNING",
     "SpawnBrief",
     "SpawnBriefError",
     "validate_brief",
     "brief_from_event",
+    "fanout_warnings",
     "EffortTier",
     "EffortTierConfig",
 ]
