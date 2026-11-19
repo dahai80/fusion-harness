@@ -156,7 +156,7 @@ def check_runner_conformance(runner: Any) -> list:
     S1): async run_sandboxed with the protocol signature. Returns a list of
     violations — empty means conformant. Behavioral conformance (deny
     without runner, tier routing, failure-deny) lives in the shared test
-    suite tests/test_sandbox_conformance.py."""
+    suite tests/test_permission_monotonic.py."""
     violations = []
     if not callable(getattr(runner, "run_sandboxed", None)):
         violations.append("run_sandboxed missing or not callable")
