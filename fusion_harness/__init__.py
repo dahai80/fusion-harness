@@ -10,122 +10,86 @@ from fusion_harness.artifact_scan import (
     scan_artifact,
     stamp_untrusted,
 )
-from fusion_harness.cache_warming import (
-    CacheWarmingGate,
-    PrefixTelemetry,
-    WarmDecision,
+from fusion_harness.checkpoint import (
+    CheckpointState,
+    CheckpointStore,
 )
-from fusion_harness.checkpoint import CheckpointError, CheckpointState, CheckpointStore
-from fusion_harness.destructive_gate import (
-    TOOL_DESTRUCTIVE_TABLE,
-    ApprovalDecision,
-    ApprovalGate,
+from fusion_harness.destructive_gate import ApprovalGate
+from fusion_harness.compactor import (
+    CompactionConfig,
+    Compactor,
 )
-from fusion_harness.compactor import CompactionConfig, Compactor
 from fusion_harness.tokens import (
     CJKAwareHeuristicTokenCounter,
     HeuristicTokenCounter,
     TokenCounter,
     count_messages,
 )
-from fusion_harness.funnels import CacheTelemetry, LifecycleBus, LLMFunnel, ToolFunnel
-
-from fusion_harness.orchestrator import BackgroundPool, ParallelTeam
-from fusion_harness.artifact_channel import ArtifactStore, SummaryInjector, WorkerDelivery
-from fusion_harness.cache_discipline import (
-    ToolAvailabilityState,
-    assert_stable_prefix,
-    check_append_only,
-    mask_tools,
+from fusion_harness.funnels import (
+    CacheTelemetry,
+    LifecycleBus,
+    LLMFunnel,
+    ToolFunnel,
 )
-from fusion_harness.playbook import Playbook, PlaybookOp
+
+from fusion_harness.orchestrator import (
+    BackgroundPool,
+    ParallelTeam,
+)
+from fusion_harness.artifact_channel import (
+    ArtifactStore,
+    SummaryInjector,
+    WorkerDelivery,
+)
+from fusion_harness.cache_discipline import mask_tools
+from fusion_harness.playbook import (
+    Playbook,
+    PlaybookOp,
+)
 from fusion_harness.spawn_protocol import (
-    EffortTierConfig,
     SpawnBrief,
     SpawnBriefError,
     brief_from_event,
     validate_brief,
 )
-from fusion_harness.team import TeamDefError, TeamDefinition, TeamMember
+from fusion_harness.team import (
+    TeamDefError,
+    TeamDefinition,
+    TeamMember,
+)
 from fusion_harness.scoped_permissions import (
-    DECISIONS as SCOPED_DECISIONS,
-    HIGH_RISK_NODES,
-    PERMISSIVENESS,
-    PermissionLevel,
     ScopedPermission,
     ScopedPermissionEngine,
     ScopedPermissionError,
 )
 from fusion_harness.dag_node import (
     BaseNode,
-    NodeContext,
     NodeRegistry,
     NodeRegistryError,
-    NodeResult,
-    ParamCoercionError,
-    coerce_params,
-    default_registry,
-    register,
-    run_node,
 )
-from fusion_harness.checkpoint_binding import NodeStateBinder, bind_node_state
+from fusion_harness.checkpoint_binding import bind_node_state
 from fusion_harness.artifact_channel import ArtifactTools
 from fusion_harness.trajectory import (
-    DISCARD_REASONS as TRAJECTORY_DISCARD_REASONS,
-    EVENTS as TRAJECTORY_EVENTS,
-    PrefixStabilityTracker,
-    TrajectoryReader,
     TrajectoryRecord,
     TrajectorySchemaError,
     TrajectoryWriter,
-    mark_discardable,
     normalize_record,
 )
-from fusion_harness.handoff_verify import (
-    ledger_for_transport,
-)
 from fusion_harness.compaction_archive import (
-    CompactionArchive,
-    DanglingLinkError,
     cite_link,
     extract_links,
-    rehydrate,
 )
-from fusion_harness.code_mode import (
-    CODE_MODE_SYSTEM_PROMPT,
-    CodeExecutor,
-    CodeModeError,
-    CodeModeMetrics,
-    CodeModeTurn,
-    CodeModeTurnResult,
-    UnknownStubError,
-    inject_code_mode_messages,
-    parse_code_block,
-    render_stubs,
+from fusion_harness.failure_attribution import FailureAnalyzer
+from fusion_harness.human_gate import HumanGate
+from fusion_harness.json_repair import (
+    JSONRepairError,
+    parse_repair,
 )
-from fusion_harness.failure_attribution import (
-    MAST_CLUSTERS,
-    MASTMode,
-    FailureAnalyzer,
-    FailureVerdict,
-    cluster_of,
-)
-from fusion_harness.human_gate import (
-    HumanGate,
-    HumanGateError,
-    HumanQuestion,
-    ReplyValidationError,
-    validate_reply,
-)
-from fusion_harness.json_repair import JSONRepairError, parse_repair
 from fusion_harness.team_runtime import (
-    MEMBER_CONTEXT_CAP_BYTES,
     MSG_TYPES,
-    TEAM_SPEC_CAP_BYTES,
     TeamMessage,
     TeamMessageError,
     TeamRuntime,
-    TeamStateError,
     TeamTask,
 )
 from fusion_harness.sandbox import (
@@ -133,29 +97,23 @@ from fusion_harness.sandbox import (
     SandboxExecRunner,
     SandboxPolicy,
     SandboxRunner,
-    SandboxRunnerUnavailable,
-    check_runner_conformance,
-    map_risk_to_tier,
 )
-from fusion_harness.security_intel import RiskIntel, RiskIntelClient
 from fusion_harness.skills import (
-    STATUS_ACTIVE,
-    STATUS_ARCHIVED,
-    STATUS_CANARY,
     Skill,
     SkillError,
     SkillRegistry,
     parse_skill,
 )
-from fusion_harness.subagent import SubagentRunner, SubagentSpec
-from fusion_harness.pipeline import (
-    MonotonicGuard,
-    PipelineBlocked,
-    PipelineOutcome,
-    ToolPipeline,
-    ToolResult,
+from fusion_harness.subagent import (
+    SubagentRunner,
+    SubagentSpec,
 )
-from fusion_harness.hooks import HookConfig, HookEngine, HookResult
+from fusion_harness.pipeline import ToolPipeline
+from fusion_harness.hooks import (
+    HookConfig,
+    HookEngine,
+    HookResult,
+)
 from fusion_harness.permissions import (
     ConfirmationPolicy,
     PermissionDecision,
@@ -164,75 +122,17 @@ from fusion_harness.permissions import (
     PermissionRule,
     score_tool_risk,
 )
-from fusion_harness.stream_guard import SURFACES as LOOP_SURFACES, LoopDetector
-from fusion_harness.consolidation import (
-    STATE_MARKER,
-    VERB_DROP,
-    VERB_FOLD,
-    VERB_REWRITE,
-    ConsolidationConfig,
-    ConsolidationError,
-    ConsolidationLog,
-    Consolidator,
-)
-from fusion_harness.provenance import (
-    EXFIL_CAPABLE,
-    ORIGIN_DERIVED,
-    ORIGIN_EXTERNAL,
-    ORIGIN_USER_INPUT,
-    TAINT_EXTERNAL_CONTENT,
-    TAINT_PRIVATE_DATA,
-    Provenance,
-    ProvenanceTracker,
-)
-from fusion_harness.memory_consolidation import (
-    OP_ADD,
-    OP_DELETE,
-    OP_NOOP,
-    OP_UPDATE,
-    ConsolidationDecision,
-    MemoryConsolidator,
-    MemoryOp,
-    Neighbor,
-    decide as decide_memory_op,
-    is_retrievable,
-    similarity as memory_similarity,
-)
-from fusion_harness.policy_engine import (
-    ALLOWED_OPS as POLICY_OPS,
-    POLICY_VERSION,
-    PolicyEngine,
-    PolicyError,
-    attach_policy_to_checkpoint,
-    policy_diff,
-    policy_from_artifact,
-    validate_policy,
-)
+from fusion_harness.stream_guard import LoopDetector
 from fusion_harness.team_topology import (
-    TOPOLOGY_BANK,
     TopologyError,
     TopologySelector,
-    TopologySpec,
-    TopologyTelemetry,
 )
-from fusion_harness.session_log import (
-    LogSchemaError,
-    SessionEventLog,
-)
-from fusion_harness.outbox import (
-    Effect,
-    OutboxStore,
-)
+from fusion_harness.session_log import SessionEventLog
+from fusion_harness.outbox import OutboxStore
 from fusion_harness.policies import (
-    Deadline,
-    DeadlineExceeded,
     ReceiptCache,
     RetryPolicy,
-    TokenLedger,
-    TransientError,
-    coalesce_retry,
     idempotency_key,
-    run_with_retry,
 )
 
 KERNEL_VERSION = "0.24.0"
@@ -243,27 +143,12 @@ __all__ = [
     "Compactor",
     "ArtifactQuarantine",
     "ScanReport",
-    "CheckpointError",
     "CheckpointState",
-    "CacheWarmingGate",
-    "PrefixTelemetry",
-    "WarmDecision",
-    "TOOL_DESTRUCTIVE_TABLE",
-    "ApprovalDecision",
     "ApprovalGate",
     "CheckpointStore",
     "CacheTelemetry",
-    "CODE_MODE_SYSTEM_PROMPT",
-    "CodeExecutor",
-    "CodeModeError",
-    "CodeModeMetrics",
-    "CodeModeTurn",
-    "CodeModeTurnResult",
     "ConfirmationPolicy",
     "CJKAwareHeuristicTokenCounter",
-    "STATUS_ACTIVE",
-    "STATUS_ARCHIVED",
-    "STATUS_CANARY",
     "Skill",
     "SkillError",
     "SkillRegistry",
@@ -275,25 +160,15 @@ __all__ = [
     "HeuristicTokenCounter",
     "TokenCounter",
     "count_messages",
-    "Deadline",
-    "DeadlineExceeded",
-    "Effect",
-    "MAST_CLUSTERS",
-    "MASTMode",
     "FailureAnalyzer",
-    "FailureVerdict",
-    "cluster_of",
     "HookConfig",
     "HookEngine",
     "HookResult",
     "LLMFunnel",
     "ExecutionTier",
     "SandboxPolicy",
-    "RiskIntel",
-    "RiskIntelClient",
     "SpawnBrief",
     "SpawnBriefError",
-    "EffortTierConfig",
     "validate_brief",
     "brief_from_event",
     "ArtifactStore",
@@ -301,136 +176,50 @@ __all__ = [
     "WorkerDelivery",
     "Playbook",
     "PlaybookOp",
-    "assert_stable_prefix",
-    "check_append_only",
     "mask_tools",
-    "ToolAvailabilityState",
     "TeamMember",
     "TeamDefinition",
     "TeamDefError",
     "TeamRuntime",
     "TeamTask",
     "TeamMessage",
-    "TeamStateError",
     "TeamMessageError",
-    "MEMBER_CONTEXT_CAP_BYTES",
     "MSG_TYPES",
-    "TEAM_SPEC_CAP_BYTES",
     "BaseNode",
-    "NodeContext",
     "NodeRegistry",
     "NodeRegistryError",
-    "NodeResult",
-    "ParamCoercionError",
-    "coerce_params",
-    "default_registry",
-    "register",
-    "run_node",
-    "NodeStateBinder",
     "bind_node_state",
     "ArtifactTools",
-    "TRAJECTORY_EVENTS",
-    "TRAJECTORY_DISCARD_REASONS",
-    "TrajectoryReader",
     "TrajectoryRecord",
     "TrajectorySchemaError",
     "TrajectoryWriter",
-    "PrefixStabilityTracker",
-    "mark_discardable",
     "normalize_record",
-    "HIGH_RISK_NODES",
     "HumanGate",
-    "HumanGateError",
-    "HumanQuestion",
-    "PermissionLevel",
     "ScopedPermission",
     "ScopedPermissionEngine",
     "ScopedPermissionError",
-    "SCOPED_DECISIONS",
     "SandboxRunner",
     "SandboxExecRunner",
-    "SandboxRunnerUnavailable",
-    "check_runner_conformance",
-    "PERMISSIVENESS",
-    "map_risk_to_tier",
     "LifecycleBus",
     "LoopDetector",
-    "LOOP_SURFACES",
-    "STATE_MARKER",
-    "VERB_DROP",
-    "VERB_FOLD",
-    "VERB_REWRITE",
-    "ConsolidationConfig",
-    "ConsolidationError",
-    "ConsolidationLog",
-    "Consolidator",
-    "EXFIL_CAPABLE",
-    "ORIGIN_DERIVED",
-    "ORIGIN_EXTERNAL",
-    "ORIGIN_USER_INPUT",
-    "TAINT_EXTERNAL_CONTENT",
-    "TAINT_PRIVATE_DATA",
-    "Provenance",
-    "ProvenanceTracker",
-    "POLICY_OPS",
-    "POLICY_VERSION",
-    "PolicyEngine",
-    "PolicyError",
-    "attach_policy_to_checkpoint",
-    "policy_diff",
-    "policy_from_artifact",
-    "validate_policy",
-    "OP_ADD",
-    "OP_DELETE",
-    "OP_NOOP",
-    "OP_UPDATE",
-    "ConsolidationDecision",
-    "MemoryConsolidator",
-    "MemoryOp",
-    "Neighbor",
-    "decide_memory_op",
-    "is_retrievable",
-    "memory_similarity",
-    "TOPOLOGY_BANK",
     "TopologyError",
     "TopologySelector",
-    "TopologySpec",
-    "TopologyTelemetry",
-    "LogSchemaError",
-    "MonotonicGuard",
     "OutboxStore",
     "PermissionDecision",
     "PermissionEngine",
     "PermissionMode",
     "PermissionRule",
-    "PipelineBlocked",
-    "PipelineOutcome",
     "ReceiptCache",
-    "ReplyValidationError",
     "RetryPolicy",
     "SessionEventLog",
-    "TokenLedger",
     "ToolFunnel",
     "ToolPipeline",
-    "ToolResult",
-    "TransientError",
-    "UnknownStubError",
-    "coalesce_retry",
     "idempotency_key",
-    "inject_code_mode_messages",
-    "parse_code_block",
-    "render_stubs",
-    "run_with_retry",
     "score_tool_risk",
-    "ledger_for_transport",
-    "CompactionArchive",
-    "DanglingLinkError",
     "JSONRepairError",
     "parse_repair",
     "scan_artifact",
     "stamp_untrusted",
     "cite_link",
     "extract_links",
-    "rehydrate",
-    "validate_reply",
 ]

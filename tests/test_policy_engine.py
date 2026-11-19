@@ -3,16 +3,8 @@ composition, artifact round-trip, checkpoint carry, adversarial cases."""
 
 import pytest
 
-from fusion_harness import (
-    ArtifactStore,
-    CheckpointState,
-    PolicyEngine,
-    PolicyError,
-    attach_policy_to_checkpoint,
-    policy_diff,
-    policy_from_artifact,
-    validate_policy,
-)
+from fusion_harness import ArtifactStore, CheckpointState
+from fusion_harness.policy_engine import PolicyEngine, PolicyError, attach_policy_to_checkpoint, policy_diff, policy_from_artifact, validate_policy
 
 
 def base_policy(**overrides):

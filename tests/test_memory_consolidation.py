@@ -1,12 +1,12 @@
 """Issue #100: memory consolidation op set — decision policy, tombstones,
 bounded retroactive updates, memory_bench four-competency gate."""
 
-from fusion_harness import (
+from fusion_harness.memory_consolidation import (
     MemoryConsolidator,
     MemoryOp,
-    decide_memory_op,
+    decide,
     is_retrievable,
-    memory_similarity,
+    similarity,
 )
 from fusion_harness.memory_consolidation import Neighbor
 
@@ -24,7 +24,7 @@ class Sink:
 
     def retrieve(self, query, limit=5):
         scored = [
-            {**i, "score": memory_similarity(query, i["payload"])}
+            {**i, "score": similarity(query, i["payload"])}
             for i in self.items.values()
             if is_retrievable(i)
         ]
@@ -33,39 +33,37 @@ class Sink:
 
 
 def test_similarity_jaccard_deterministic():
-    assert memory_similarity("deploy on friday", "deploy on friday") == 1.0
-    assert memory_similarity("deploy on friday", "cats are cute") == 0.0
-    a = memory_similarity("deploy on friday morning", "deploy friday")
+    assert similarity("deploy on friday", "deploy on friday") == 1.0
+    assert similarity("deploy on friday", "cats are cute") == 0.0
+    a = similarity("deploy on friday morning", "deploy friday")
     assert 0.0 < a < 1.0
 
 
 def test_decide_near_duplicate_update():
-    d = decide_memory_op("deploy happens on friday", [nb("k1", "deploy on friday", score=0.95)])
+    d = decide("deploy happens on friday", [nb("k1", "deploy on friday", score=0.95)])
     assert d.op == MemoryOp.UPDATE
     assert d.neighbor.key == "k1"
 
 
 def test_decide_contradiction_supersedes_with_tombstone():
-    d = decide_memory_op("release day is monday", [nb("k1", "release day is friday", score=0.4)])
+    d = decide("release day is monday", [nb("k1", "release day is friday", score=0.4)])
     assert d.op == MemoryOp.UPDATE
     assert "tombstone" in d.reason
 
 
 def test_decide_retraction_deletes():
-    d = decide_memory_op(
-        "please retract: deploy on friday", [nb("k1", "deploy on friday", score=0.6)]
-    )
+    d = decide("please retract: deploy on friday", [nb("k1", "deploy on friday", score=0.6)])
     assert d.op == MemoryOp.DELETE
 
 
 def test_decide_no_neighbor_adds():
-    d = decide_memory_op("user likes tea", [nb("k1", "unrelated stuff entirely", score=0.1)])
+    d = decide("user likes tea", [nb("k1", "unrelated stuff entirely", score=0.1)])
     assert d.op == MemoryOp.ADD
 
 
 def test_decide_gray_zone_noop():
     # Overlap in [0.5, 0.92): related but neither duplicate nor unrelated.
-    d = decide_memory_op(
+    d = decide(
         "deploy on friday with rollback and monitoring",
         [nb("k1", "deploy on friday plus runbook", score=0.6)],
     )
@@ -73,7 +71,7 @@ def test_decide_gray_zone_noop():
 
 
 def test_decide_ignores_tombstoned_neighbors():
-    d = decide_memory_op(
+    d = decide(
         "deploy happens on friday",
         [nb("k1", "deploy on friday", score=0.99, tombstoned=True)],
     )

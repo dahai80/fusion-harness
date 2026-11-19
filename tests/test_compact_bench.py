@@ -79,12 +79,8 @@ def test_bad_summarizer_loses_rules_but_gate_names_them():
 
 
 def test_consolidation_axis_good_consolidator_passes(tmp_path):
-    from fusion_harness import (
-        CompactionArchive,
-        ConsolidationConfig,
-        ConsolidationLog,
-        Consolidator,
-    )
+    from fusion_harness.compaction_archive import CompactionArchive
+    from fusion_harness.consolidation import ConsolidationConfig, ConsolidationLog, Consolidator
 
     fixture = {
         "name": "consolidation-ok",
@@ -131,10 +127,7 @@ def test_consolidation_axis_bad_consolidator_fails_gate():
 
 
 def test_consolidation_axis_state_cap_case(tmp_path):
-    from fusion_harness import (
-        ConsolidationConfig,
-        Consolidator,
-    )
+    from fusion_harness.consolidation import ConsolidationConfig, Consolidator
 
     fixture = {
         "name": "state-cap-refusal",

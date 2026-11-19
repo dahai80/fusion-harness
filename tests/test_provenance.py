@@ -3,16 +3,8 @@ exfil-capable gating, funnel wiring (opt-in, narrow-only)."""
 
 import asyncio
 
-from fusion_harness import (
-    EXFIL_CAPABLE,
-    ORIGIN_EXTERNAL,
-    ORIGIN_USER_INPUT,
-    TAINT_EXTERNAL_CONTENT,
-    PermissionEngine,
-    Provenance,
-    ProvenanceTracker,
-    ToolFunnel,
-)
+from fusion_harness import PermissionEngine, ToolFunnel
+from fusion_harness.provenance import EXFIL_CAPABLE, ORIGIN_EXTERNAL, ORIGIN_USER_INPUT, TAINT_EXTERNAL_CONTENT, Provenance, ProvenanceTracker
 
 
 def test_tag_birth_external():

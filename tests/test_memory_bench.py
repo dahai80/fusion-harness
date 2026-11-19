@@ -47,7 +47,7 @@ def test_over_forgetting_fails_gate():
     # Seeded damage: an aggressive gate that tombstones everything must
     # fail the selective-forgetting competency.
     import memory_bench
-    from fusion_harness import MemoryConsolidator
+    from fusion_harness.memory_consolidation import MemoryConsolidator
 
     class BullyConsolidator(MemoryConsolidator):
         def consolidate(self, candidate, scope="memory"):

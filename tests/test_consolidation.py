@@ -3,13 +3,8 @@ cap, audit log, archive-backed undo, retention-list protection."""
 
 import pytest
 
-from fusion_harness import (
-    CompactionArchive,
-    ConsolidationConfig,
-    ConsolidationError,
-    ConsolidationLog,
-    Consolidator,
-)
+from fusion_harness.compaction_archive import CompactionArchive
+from fusion_harness.consolidation import ConsolidationConfig, ConsolidationError, ConsolidationLog, Consolidator
 
 
 def make_cons(tmp_path, **cfg_kw):

@@ -17,18 +17,8 @@ from pathlib import Path
 
 import pytest
 
-from fusion_harness import (
-    Deadline,
-    DeadlineExceeded,
-    OutboxStore,
-    ReceiptCache,
-    RetryPolicy,
-    TokenLedger,
-    TransientError,
-    coalesce_retry,
-    idempotency_key,
-    run_with_retry,
-)
+from fusion_harness import OutboxStore, ReceiptCache, RetryPolicy, idempotency_key
+from fusion_harness.policies import Deadline, DeadlineExceeded, TokenLedger, TransientError, coalesce_retry, run_with_retry
 from fusion_harness.policies import _default_retryable
 
 
