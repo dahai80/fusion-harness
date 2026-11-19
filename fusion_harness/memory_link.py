@@ -39,6 +39,7 @@ class MemoryBridge:
         source: Optional[MemorySource] = None,
         quarantine: Optional[ArtifactQuarantine] = None,
         bus=None,
+        consolidator=None,
     ) -> None:
         self.sink = sink
         self.source = source
@@ -47,6 +48,10 @@ class MemoryBridge:
         # recalls are dropped before prompt assembly.
         self.quarantine = quarantine
         self.bus = bus
+        # Issue #100: optional consolidation gate — when wired, clean
+        # compaction summaries go through ADD/UPDATE/DELETE/NOOP instead
+        # of unconditional store. Quarantined writes keep the old path.
+        self.consolidator = consolidator
 
     def _quarantine_hit(self, report: ScanReport, payload: str, where: str) -> None:
         if self.quarantine is not None:
@@ -87,6 +92,23 @@ class MemoryBridge:
                 metadata["quarantined"] = True
                 metadata["origin"] = "untrusted"
                 metadata["scan_rules"] = report.rule_names()
+            if not report.clean:
+                metadata["quarantined"] = True
+                metadata["origin"] = "untrusted"
+                metadata["scan_rules"] = report.rule_names()
+            if not report.clean:
+                metadata["quarantined"] = True
+                metadata["origin"] = "untrusted"
+                metadata["scan_rules"] = report.rule_names()
+            if report.clean and self.consolidator is not None:
+                decision = self.consolidator.consolidate(summary, scope=scope)
+                logger.info(
+                    "compaction summary consolidated scope=%s session=%s op=%s",
+                    scope,
+                    session_id,
+                    decision.op,
+                )
+                return decision.op != "NOOP"
             self.sink.store(
                 key=f"{scope}:{session_id}",
                 payload=summary,
