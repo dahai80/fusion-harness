@@ -84,6 +84,15 @@ SIDECAR_VECTORS = [
         "req": {"id": 8, "method": "nope", "params": {}},
         "expect": {"error.code": "protocol"},
     },
+    {
+        "name": "report_shape",
+        "req": {"id": 9, "method": "report", "params": {}},
+        "expect": {
+            "result.snapshot.agent": "str",
+            "result.snapshot.events": "obj",
+            "result.attribution.runs": "obj",
+        },
+    },
 ]
 
 

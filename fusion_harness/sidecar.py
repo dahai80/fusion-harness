@@ -26,13 +26,16 @@ from dataclasses import dataclass, field
 
 from .compactor import Compactor
 from .funnels import LifecycleBus, LLMFunnel, ToolFunnel
+from .observability import ObservabilityLoop
 from .permissions import ConfirmationPolicy, PermissionEngine
 
 logger = logging.getLogger(__name__)
 
 PROTOCOL_VERSION = 1
-KERNEL_METHODS = ["ping", "hello", "pre_llm", "post_llm", "tool_admit", "resolve", "meter", "reset"]
-FEATURES = ["approvals", "meter", "compaction", "events"]
+KERNEL_METHODS = [
+    "ping", "hello", "pre_llm", "post_llm", "tool_admit", "resolve", "meter", "reset", "report",
+]
+FEATURES = ["approvals", "meter", "compaction", "events", "observability"]
 ERROR_CODES = ["protocol", "state", "budget", "permission", "internal"]
 
 
@@ -109,6 +112,12 @@ class SidecarState:
                 compactor=self.compactor,
                 budget_ref=self.budget,
             )
+        # G4 observability loop: bus events land as normalized records;
+        # report() = meter snapshot + (agent, step, mode) attribution.
+        self.observer = ObservabilityLoop(
+            run_id="sidecar", budget_ref=self.budget, llm_funnel=self.llm_funnel
+        )
+        self.observer.observe_bus(self.bus)
 
 
 def error_resp(code: str, message: str, req_id=None) -> dict:
@@ -149,6 +158,7 @@ class Harnessd:
                 "resolve": self._resolve,
                 "meter": self._meter,
                 "reset": self._reset,
+                "report": self._report,
             }.get(method)
             if handler is None:
                 return error_resp("protocol", "unknown method: %s" % method, req_id)
@@ -185,6 +195,11 @@ class Harnessd:
 
     async def _pre_llm(self, req: dict) -> dict:
         p = req.get("params") or {}
+        self._state.observer.record(
+            "llm_before", str(p.get("node_label", "")),
+            {"model": p.get("model", ""), "messages": len(p.get("messages") or [])},
+            run_id=str(p.get("graph_id", "")) or None,
+        )
         ctx = _Ctx(p)
         proceed, reason, msgs = await self._state.llm_funnel.pre_llm(
             ctx,
@@ -206,6 +221,14 @@ class Harnessd:
 
     async def _post_llm(self, req: dict) -> dict:
         p = req.get("params") or {}
+        parse_error = bool(p.get("parse_error", False))
+        finish_reason = str(p.get("finish_reason", ""))
+        if parse_error or finish_reason in ("length", "max_output_tokens", "truncated"):
+            self._state.observer.record(
+                "error", str(p.get("node_label", "")),
+                {"kind": "parse_error" if parse_error else "truncation", "finish_reason": finish_reason},
+                run_id=str(p.get("graph_id", "")) or None,
+            )
         self._state.llm_funnel.post_llm(
             _Ctx(p),
             node_label=str(p.get("node_label", "")),
@@ -232,6 +255,20 @@ class Harnessd:
             can_confirm=True,
         )
         result = outcome.to_dict()
+        tool_name = str(p.get("tool_name", ""))
+        self._state.observer.record(
+            "tool_call", str(p.get("node_label", "")),
+            {"tool": tool_name, "allowed": outcome.allowed,
+             "needs_approval": outcome.needs_approval},
+            args=p.get("args") or {},
+            run_id=str(p.get("graph_id", "")) or None,
+        )
+        if not outcome.allowed and not outcome.needs_approval:
+            self._state.observer.record(
+                "error", str(p.get("node_label", "")),
+                {"kind": "tool_denied", "tool": tool_name, "reason": outcome.reason},
+                run_id=str(p.get("graph_id", "")) or None,
+            )
         if outcome.needs_approval:
             approval_id = uuid.uuid4().hex
             self._state.pending_approvals[approval_id] = {"params": p}
@@ -286,6 +323,12 @@ class Harnessd:
         meter["budget_spent_tokens"] = getattr(budget, "spent_tokens", None)
         meter["budget_exceeded"] = bool(budget.is_exceeded())
         return {"id": req.get("id"), "result": meter}
+
+    async def _report(self, req: dict) -> dict:
+        # G4: one report — meter snapshot + failure attribution over the
+        # recorded run. Attribution errors degrade to an "error" key, never
+        # break the wire.
+        return {"id": req.get("id"), "result": self._state.observer.report()}
 
     async def _reset(self, req: dict) -> dict:
         p = req.get("params") or {}
