@@ -22,9 +22,18 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional
 
+from fusion_harness.checkpoint import CheckpointState
+
 logger = logging.getLogger(__name__)
 
 _POLICIES = ("block", "continue")
+
+# Issue #125: explicit-checkpoint school for durable HITL pauses. When a
+# CheckpointStore is wired (checkpoint_ref), every pending HumanQuestion is
+# mirrored as a checkpoint entry with the `awaiting_human` state marker
+# carrying the question payload; answer/cancel/expiry update it. Opt-in —
+# unwired gate is unchanged (the JSON queue already survives restart).
+AWAITING_HUMAN_MARKER = "awaiting_human"
 _QUESTION_STATUSES = ("pending", "answered", "cancelled", "expired")
 
 _REPLY_TYPES = {
@@ -108,9 +117,16 @@ class HumanGate:
     """Persistent async human-approval queue. One JSON file, atomic writes,
     in-process waiters via asyncio events; restart-safe by construction."""
 
-    def __init__(self, state_dir: str, bus=None, clock: Optional[Any] = None) -> None:
+    def __init__(
+        self,
+        state_dir: str,
+        bus=None,
+        clock: Optional[Any] = None,
+        checkpoint_ref=None,
+    ) -> None:
         self.state_dir = state_dir
         self.bus = bus
+        self.checkpoint_ref = checkpoint_ref
         self._clock = clock or time.time
         self._lock = threading.Lock()
         self._questions: Dict[str, HumanQuestion] = {}
@@ -184,6 +200,7 @@ class HumanGate:
             self._questions[q.id] = q
             self._events[q.id] = asyncio.Event()
             self._persist()
+        self._checkpoint_question(q, "pending")
         self._emit(
             "human_gate.question", {"id": q.id, "session": session_id, "policy": policy}, session_id
         )
@@ -231,6 +248,7 @@ class HumanGate:
             q.status = "answered"
             q.answered_at = self._clock()
             self._persist()
+            self._checkpoint_question(q, "answered", reply=validated)
             event = self._events.get(question_id)
         if event is not None:
             event.set()
@@ -249,6 +267,7 @@ class HumanGate:
                 return False
             q.status = "cancelled"
             self._persist()
+            self._checkpoint_question(q, "cancelled")
             event = self._events.get(question_id)
         if event is not None:
             event.set()
@@ -282,6 +301,7 @@ class HumanGate:
             q.status = "answered"
             q.answered_at = self._clock()
             self._persist()
+            self._checkpoint_question(q, "answered", reply=validated)
             event = self._events.get(question_id)
         if event is not None:
             event.set()
@@ -344,6 +364,47 @@ class HumanGate:
         logger.info("human reply consumed id=%s session=%s", question_id, q.session_id)
         return reply
 
+    def _checkpoint_question(self, q: HumanQuestion, kind: str, reply=None) -> None:
+        """Issue #125: mirror the question into the wired CheckpointStore
+        under the `awaiting_human` marker (same seq reused per question so
+        the entry is REPLACEd in place). Upgrade, not dependency: a
+        checkpoint failure logs a warning and the JSON queue stays authoritative."""
+        if self.checkpoint_ref is None:
+            return
+        try:
+            seq = q.payload.get("checkpoint_seq") if isinstance(q.payload, dict) else None
+            state = CheckpointState(
+                messages=[],
+                permission_mode=AWAITING_HUMAN_MARKER,
+                metadata={
+                    "awaiting_human": {
+                        "question_id": q.id,
+                        "session_id": q.session_id,
+                        "question": q.question,
+                        "payload": dict(q.payload or {}),
+                        "reply_schema": dict(q.reply_schema or {}),
+                        "policy": q.policy,
+                        "requester": q.requester,
+                        "expires_at": q.expires_at,
+                        "checkpoint_kind": kind,
+                        "reply": reply,
+                    }
+                },
+                lineage_id=q.session_id,
+            )
+            saved = self.checkpoint_ref.save(q.session_id, state, seq=seq)
+            if isinstance(q.payload, dict):
+                q.payload["checkpoint_seq"] = saved
+            logger.info(
+                "awaiting_human checkpoint kind=%s id=%s session=%s seq=%s",
+                kind,
+                q.id,
+                q.session_id,
+                saved,
+            )
+        except Exception as exc:
+            logger.warning("awaiting_human checkpoint failed id=%s: %s", q.id, exc)
+
     def _emit(self, event: str, payload: Dict[str, Any], session_id: str = "") -> None:
         if self.bus is None:
             return
@@ -354,6 +415,7 @@ class HumanGate:
 
 
 __all__ = [
+    "AWAITING_HUMAN_MARKER",
     "HumanGate",
     "HumanGateError",
     "HumanQuestion",
