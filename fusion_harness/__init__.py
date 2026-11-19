@@ -183,6 +183,16 @@ from fusion_harness.permissions import (
     score_tool_risk,
 )
 from fusion_harness.stream_guard import SURFACES as LOOP_SURFACES, LoopDetector
+from fusion_harness.consolidation import (
+    STATE_MARKER,
+    VERB_DROP,
+    VERB_FOLD,
+    VERB_REWRITE,
+    ConsolidationConfig,
+    ConsolidationError,
+    ConsolidationLog,
+    Consolidator,
+)
 from fusion_harness.provenance import (
     EXFIL_CAPABLE,
     ORIGIN_DERIVED,
@@ -368,6 +378,14 @@ __all__ = [
     "LifecycleBus",
     "LoopDetector",
     "LOOP_SURFACES",
+    "STATE_MARKER",
+    "VERB_DROP",
+    "VERB_FOLD",
+    "VERB_REWRITE",
+    "ConsolidationConfig",
+    "ConsolidationError",
+    "ConsolidationLog",
+    "Consolidator",
     "EXFIL_CAPABLE",
     "ORIGIN_DERIVED",
     "ORIGIN_EXTERNAL",
