@@ -193,6 +193,16 @@ from fusion_harness.provenance import (
     Provenance,
     ProvenanceTracker,
 )
+from fusion_harness.policy_engine import (
+    ALLOWED_OPS as POLICY_OPS,
+    POLICY_VERSION,
+    PolicyEngine,
+    PolicyError,
+    attach_policy_to_checkpoint,
+    policy_diff,
+    policy_from_artifact,
+    validate_policy,
+)
 from fusion_harness.session_log import (
     LogSchemaError,
     SessionEvent,
@@ -366,6 +376,14 @@ __all__ = [
     "TAINT_PRIVATE_DATA",
     "Provenance",
     "ProvenanceTracker",
+    "POLICY_OPS",
+    "POLICY_VERSION",
+    "PolicyEngine",
+    "PolicyError",
+    "attach_policy_to_checkpoint",
+    "policy_diff",
+    "policy_from_artifact",
+    "validate_policy",
     "LogSchemaError",
     "MonotonicGuard",
     "OutboxStore",
