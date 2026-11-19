@@ -10,6 +10,11 @@ from fusion_harness.artifact_scan import (
     scan_artifact,
     stamp_untrusted,
 )
+from fusion_harness.cache_warming import (
+    CacheWarmingGate,
+    PrefixTelemetry,
+    WarmDecision,
+)
 from fusion_harness.checkpoint import CheckpointError, CheckpointState, CheckpointStore
 from fusion_harness.destructive_gate import (
     TOOL_DESTRUCTIVE_TABLE,
@@ -219,6 +224,9 @@ __all__ = [
     "ScanReport",
     "CheckpointError",
     "CheckpointState",
+    "CacheWarmingGate",
+    "PrefixTelemetry",
+    "WarmDecision",
     "TOOL_DESTRUCTIVE_TABLE",
     "ApprovalDecision",
     "ApprovalGate",
