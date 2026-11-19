@@ -98,6 +98,10 @@ class FailureVerdict:
     cluster: str
     confidence: float
     evidence: str = ""
+    # Issue #123 (Who&When): steps between the cited evidence and the run
+    # outcome — attribution accuracy decays with this distance, so consumers
+    # can discount low-confidence long-range verdicts.
+    evidence_distance: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -108,6 +112,7 @@ class FailureVerdict:
             "cluster": self.cluster,
             "confidence": self.confidence,
             "evidence": self.evidence,
+            "evidence_distance": self.evidence_distance,
         }
 
 
@@ -175,6 +180,7 @@ class FailureAnalyzer:
         if not candidates:
             logger.info("failure attribution run=%s no candidates", run_id)
             return {"verdicts": [], "responsible_agent": ""}
+        last_step = len(recs) - 1
         if self.pinpointer is not None:
             step, mode, confidence, evidence = self.pinpointer(recs, candidates)
             agent = getattr(recs[step], "node_id", "") if 0 <= step < len(recs) else ""
@@ -194,6 +200,7 @@ class FailureAnalyzer:
                     cluster=cluster,
                     confidence=float(confidence),
                     evidence=str(evidence)[:200],
+                    evidence_distance=max(0, last_step - step),
                 )
             )
         else:
@@ -208,12 +215,43 @@ class FailureAnalyzer:
                     cluster=cluster_of(mode),
                     confidence=min(1.0, 0.4 + 0.2 * best.weight),
                     evidence=best.reason,
+                    evidence_distance=max(0, last_step - best.step),
                 )
             )
         responsible = verdicts[0].agent if verdicts else ""
+        decisive = self._decisive_moment(candidates, last_step)
         return {
             "verdicts": [v.to_dict() for v in verdicts],
             "responsible_agent": responsible,
+            "decisive_moment": decisive,
+        }
+
+    @staticmethod
+    def _decisive_moment(candidates: List[_Candidate], last_step: int) -> Dict[str, Any]:
+        """Issue #123: step-level decisive-failure-moment candidate via
+        evidence-distance scoring over the recorded trajectory — no
+        counterfactual replay. Score = weight / (1 + distance), so evidence
+        near the outcome dominates unless earlier evidence is much stronger."""
+
+        def _score(c: _Candidate) -> float:
+            distance = max(0, last_step - c.step)
+            return c.weight / (1.0 + distance)
+
+        best = max(candidates, key=_score)
+        distance = max(0, last_step - best.step)
+        logger.info(
+            "decisive moment step=%d distance=%d weight=%.1f reason=%s",
+            best.step,
+            distance,
+            best.weight,
+            best.reason,
+        )
+        return {
+            "step": best.step,
+            "agent": best.agent,
+            "distance": distance,
+            "reason": best.reason,
+            "score": round(_score(best), 6),
         }
 
     @staticmethod
