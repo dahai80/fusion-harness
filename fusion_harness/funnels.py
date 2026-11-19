@@ -733,6 +733,66 @@ class LLMFunnel:
         self.budget_ref = budget_ref
         self.calls = 0
         self.cache = CacheTelemetry()
+        # Issue #91: failure-mode counts — parse errors and truncations are
+        # separately observable, never masked as each other.
+        self.failures = {"parse_error": 0, "truncation": 0, "other": 0}
+
+    # ---------- failure-mode telemetry + meter (issue #91) ----------
+
+    @staticmethod
+    def classify_failure(
+        content: str = "", finish_reason: str = "", parse_error: bool = False
+    ) -> str:
+        if finish_reason in ("length", "max_output_tokens", "truncated"):
+            return "truncation"
+        if parse_error:
+            return "parse_error"
+        if content and not content.strip():
+            return "other"
+        return "other"
+
+    def record_failure(self, kind: str, detail: str = "") -> str:
+        if kind not in self.failures:
+            kind = "other"
+        self.failures[kind] += 1
+        self._emit("agent", "llm_failure", {"kind": kind, "detail": str(detail)[:200]}, None)
+        logger.warning("llm call failure kind=%s detail=%s", kind, detail)
+        return kind
+
+    def record_outcome(
+        self,
+        content: str = "",
+        finish_reason: str = "",
+        parse_error: bool = False,
+        detail: str = "",
+    ) -> str:
+        """Classify a post-call outcome; counts it when failed, returns the
+        kind ("" = success). Parse errors and truncations stay distinct:
+        a malformed tool call is never reported as truncation and vice
+        versa (mini-swe-agent v2.4.5 semantics)."""
+        truncated = finish_reason in ("length", "max_output_tokens", "truncated")
+        if not parse_error and not truncated:
+            return ""
+        kind = self.classify_failure(content, finish_reason, parse_error)
+        return self.record_failure(kind, detail or finish_reason)
+
+    def meter(self) -> dict:
+        """Read-only meter view for consumers (console / AS / cowork):
+        tokens, cache axis, failure counts and budget state without
+        scraping funnel internals."""
+        snap = self.cache.snapshot()
+        budget = self.budget_ref
+        failed = sum(self.failures.values())
+        return {
+            "calls": self.calls,
+            "prompt_tokens": snap["input_tokens"],
+            "cached_input_tokens": snap["cached_input_tokens"],
+            "cache_hit_rate": snap["hit_rate"],
+            "failures": dict(self.failures),
+            "failure_rate": round(failed / self.calls, 6) if self.calls else 0.0,
+            "budget_spent_tokens": getattr(budget, "spent_tokens", None),
+            "budget_exceeded": bool(budget is not None and _budget_exceeded(budget, "")),
+        }
 
     def set_budget_ref(self, budget_ref) -> None:
         self.budget_ref = budget_ref
@@ -823,9 +883,14 @@ class LLMFunnel:
         model: str = "",
         usage: dict | None = None,
         content: str = "",
+        finish_reason: str = "",
+        parse_error: bool = False,
     ) -> None:
         self.calls += 1
-        # N8 metering: feed per-call usage into the wired budget.
+        # N8 metering: feed per-call usage into the wired budget. Billing is
+        # unconditional on parse success (issue #91): a billed call whose
+        # output failed to parse still counts against the budget — the
+        # outcome is only classified into failure telemetry afterwards.
         budget = self.budget_ref
         if budget is not None and usage:
             graph_id = getattr(ctx, "graph_id", "") or ""
@@ -850,6 +915,12 @@ class LLMFunnel:
             },
             ctx,
         )
+        # Issue #91: parse-error vs truncation are separately counted — a
+        # failed parse on a billed call never masks as truncation.
+        if parse_error or finish_reason:
+            self.record_outcome(
+                content=content, finish_reason=finish_reason, parse_error=parse_error
+            )
         if self.hooks is not None:
             try:
                 import asyncio

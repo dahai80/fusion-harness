@@ -6,7 +6,6 @@ import enum
 import json
 import logging
 import os
-import re
 import shlex
 import time
 from dataclasses import dataclass
@@ -81,7 +80,11 @@ class HookConfig:
     def matches(self, tool_name: str) -> bool:
         if not self.matcher or self.matcher == "*":
             return True
-        return re.search(self.matcher, tool_name or "") is not None
+        # Issue #92: host-supplied matcher regex goes through the ReDoS
+        # guard (length caps + compile cache, never raises mid-fire).
+        from fusion_harness.regex_guard import guard_search
+
+        return guard_search(self.matcher, tool_name or "")
 
     def to_dict(self) -> dict:
         return {
