@@ -80,7 +80,10 @@ from fusion_harness.compaction_archive import (
     extract_links,
 )
 from fusion_harness.failure_attribution import FailureAnalyzer
-from fusion_harness.human_gate import HumanGate
+from fusion_harness.human_gate import (
+    AWAITING_HUMAN_MARKER,
+    HumanGate,
+)
 from fusion_harness.json_repair import (
     JSONRepairError,
     parse_repair,
@@ -194,6 +197,7 @@ __all__ = [
     "TrajectorySchemaError",
     "TrajectoryWriter",
     "normalize_record",
+    "AWAITING_HUMAN_MARKER",
     "HumanGate",
     "ScopedPermission",
     "ScopedPermissionEngine",
