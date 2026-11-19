@@ -110,10 +110,19 @@ def run_suite(
 ) -> Dict[str, Any]:
     results = [run_fixture(compactor, f, level) for f in fixtures]
     failed = [r["name"] for r in results if not _passes(r)]
+    # Issue #88: compaction-failure telemetry — refusals/empty outputs that
+    # hit the degraded fallback path, as a rate over LLM compaction calls.
+    # Duck-typed: non-Compactor stand-ins simply report no LLM calls.
+    stats = getattr(compactor, "failure_stats", None)
+    failure_rate = 0.0
+    if stats and stats.get("llm_calls", 0) > 0:
+        failure_rate = round(stats["fallbacks"] / stats["llm_calls"], 6)
     return {
         "fixtures": results,
         "failed": failed,
         "passed": not failed,
+        "compaction_failures": dict(stats) if stats else {},
+        "compaction_failure_rate": failure_rate,
     }
 
 
