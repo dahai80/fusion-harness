@@ -7,7 +7,7 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.23.0
+version: 0.24.0
 updated: 2026-11-19
 owner: "@dahai"
 source_of_truth:
@@ -15,6 +15,58 @@ source_of_truth:
 ---
 
 # Changelog
+
+## 0.24.0 (2026-11-19)
+
+Safety + scheduling batch — implements design docs #97-#101.
+
+### Provenance tags (issue #97)
+
+- `ProvenanceTracker` tags every `ToolFunnel.run_tool` result with an O(1)
+  metadata sidecar (`Provenance`: source tool, origin
+  user_input/external/derived, taints); downstream calls whose args contain
+  exact substrings of tainted outputs inherit the union of taints; outbound
+  tainted args to `EXFIL_CAPABLE` tools require approval, derived args to
+  high-risk tools default deny. Narrow-only, consulted after the permission
+  engine; unwired tracker = zero behavior change.
+
+### Policy-as-artifact (issue #98)
+
+- `validate_policy` + `PolicyEngine` (Progent rule DSL, no eval/regex):
+  JSON policies with glob tool patterns and fixed constraint ops; deny-wins
+  stack composition where a policy allow never widens a permission deny;
+  policies are ArtifactStore artifacts; `attach_policy_to_checkpoint`
+  records `active_policies` in checkpoint metadata (forks inherit);
+  `policy_diff` for rule-level drift.
+
+### Proactive consolidation verbs (issue #99)
+
+- `Consolidator` FOLD (citable `[fold]` summary backed by the immutable
+  archive, reversible via `undo_fold`, pre-fold checkpoint), DROP (reason
+  required, refuses retention-list content, never archived), REWRITE
+  (bounded merge, over-cap raises and falls back to FOLD). Opt-in via
+  `ConsolidationConfig.enable_proactive`. `evals/compact_bench.py` gains a
+  consolidation axis with undo-fidelity + cap-refusal gate.
+
+### Memory consolidation op set (issue #100)
+
+- `MemoryConsolidator` decides each candidate against retrieval neighbors:
+  ADD/UPDATE (near-duplicate merge, conflicting value supersedes with
+  tombstone)/DELETE (retraction; metadata tombstone, never deletion)/NOOP
+  gray zone; A-MEM-style bounded retroactive refresh;
+  `MemoryBridge(consolidator=...)` routes clean compaction summaries
+  through the gate. `evals/memory_bench.py` scores accurate retrieval,
+  test-time learning, long-range linkage, selective forgetting.
+
+### Communication topology scheduling (issue #101)
+
+- `TOPOLOGY_BANK` (chain/star/mesh/role_filtered/lead_only as data) +
+  `TopologySelector` scoring role fit vs token cost under a hard budget and
+  fanout pre-filter; wired into `TeamRuntime` behind
+  `enable_topology_scheduling` / `FUSION_TEAM_TOPOLOGY=1` — the selector
+  proposes the per-step send set, the wired `budget_ref` disposes each
+  send, selector faults fall back to a loud full broadcast; steps recorded
+  in `TopologyTelemetry`. Default off.
 
 ## 0.23.0 (2026-11-19)
 
