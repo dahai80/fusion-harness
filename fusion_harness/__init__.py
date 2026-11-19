@@ -29,7 +29,7 @@ from fusion_harness.tokens import (
     count_messages,
 )
 from fusion_harness.funnels import CacheTelemetry, LifecycleBus, LLMFunnel, ToolFunnel
-from fusion_harness.memory_link import MemoryBridge, MemorySink, MemorySource
+
 from fusion_harness.orchestrator import BackgroundPool, ParallelTeam
 from fusion_harness.artifact_channel import ArtifactStore, SummaryInjector, WorkerDelivery
 from fusion_harness.cache_discipline import (
@@ -288,9 +288,6 @@ __all__ = [
     "HookResult",
     "LLMFunnel",
     "ExecutionTier",
-    "MemoryBridge",
-    "MemorySink",
-    "MemorySource",
     "SandboxPolicy",
     "RiskIntel",
     "RiskIntelClient",

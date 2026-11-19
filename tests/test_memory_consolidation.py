@@ -144,7 +144,7 @@ def test_sink_failure_degrades_to_noop_not_crash():
 
 
 def test_memory_bridge_optin_consolidation():
-    from fusion_harness import MemoryBridge
+    from fusion_harness.memory_link import MemoryBridge
 
     sink = Sink()
     sink.store(key="m1", payload="deploy on friday", metadata={})
@@ -157,7 +157,7 @@ def test_memory_bridge_optin_consolidation():
 
 
 def test_memory_bridge_default_path_unchanged():
-    from fusion_harness import MemoryBridge
+    from fusion_harness.memory_link import MemoryBridge
 
     sink = Sink()
     bridge = MemoryBridge(sink=sink, source=sink)
