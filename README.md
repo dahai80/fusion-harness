@@ -42,6 +42,13 @@ approval).
 - `fusion_harness.compactor` — `Compactor` (context window compaction with retention)
 - `fusion_harness.pipeline` — `ToolPipeline` five-stage segmented tool execution: pre-execute waterfall, identity-protected monotonic guards, one-shot fail-closed approval, around-dispatch timeout/retry, post-execute waterfall — ending in a frozen `ToolResult` (issue #5)
 - `fusion_harness.session_log` — `SessionEventLog` durable append-only, schema-versioned, replayable session event log; live `LifecycleEvent`s are structurally rejected (issue #4)
+- `fusion_harness.provenance` — `ProvenanceTracker` CaMeL-style taint tags on tool results; outbound tainted args gated narrow-only after the permission engine (issue #97)
+- `fusion_harness.policy_engine` — `PolicyEngine` declarative policy-as-artifact (Progent rule DSL); deny-wins stack composition, checkpoint lineage inheritance, `policy_diff` (issue #98)
+- `fusion_harness.consolidation` — `Consolidator` proactive FOLD/DROP/REWRITE verbs (reversible fold, retention-list-safe drop, bounded rewrite) (issue #99)
+- `fusion_harness.memory_consolidation` — `MemoryConsolidator` ADD/UPDATE/DELETE/NOOP op set at the memory write gate; tombstone-based forgetting (issue #100)
+- `fusion_harness.team_topology` — `TOPOLOGY_BANK` + `TopologySelector` per-step communication topology scheduling (role fit vs token cost under budget/fanout) (issue #101)
+- `fusion_harness.team_runtime` — `TeamRuntime` lifecycle state machine, task board, mailbox; opt-in topology scheduling via `FUSION_TEAM_TOPOLOGY=1` (issues #31, #101)
+- `evals/compact_bench.py` + `evals/memory_bench.py` — offline regression gates for compaction, consolidation, and memory forgetting
 
 ## Security defaults (0.2.0, breaking)
 
