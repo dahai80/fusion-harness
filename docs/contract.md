@@ -146,6 +146,7 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 - `CompactionConfig.cache_advisor` exposes `suggest_keep_rounds(messages) -> int`; the compactor takes `max(config.keep_recent_rounds, suggested)` — advice can only reduce compaction aggressiveness (protect prefix-cache stability), never increase it. Advisor failure logs a warning and uses config.
 
 - **Threshold-triggered compaction (issue #122)**: `CompactionConfig.trigger_ratio` (default None = consumer-invoked, zero behavior change) derives a single auto-trigger policy at `int(context_window * trigger_ratio)` — `trigger_threshold()` returns None while off, `should_auto_compact(tokens)` is the one consult for LLMFunnel/sidecar; ratios outside (0.0, 1.0] raise `ValueError` (loud), buffer-based `should_compact` levels are unchanged. Industry source: Anthropic effective-context-engineering (~80-92% of window).
+- **Post-compaction validation (issue #131)**: optional `CompactionConfig.validator` callable runs after compaction with `(compacted_messages, original_token_count)`; bool or `(bool, verdict)` return. Failure (exception or falsy) logs a warning and emits `compaction_validated` {ok, verdict, level, before_tokens, after_tokens} on the LifecycleBus — observational only, never gates or reverts; unwired validator = zero behavior change (no event).
 ## 15. Memory Binding (0.9.0, plan P3-2)
 
 - `MemorySink.store(key, payload, metadata)` / `MemorySource.retrieve(query, limit)`; `MemoryBridge.persist_compaction` and `recall`/`inject_context` (just-in-time, bounded, inserted after the system prefix). Sink/source failures are logged no-ops — memory is an upgrade, never a dependency.
@@ -173,12 +174,9 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 - **Fan-out ladder (issue #124)**: `validate_brief` hard-errors when `concurrency` exceeds `FANOUT_HARD_MAX` (20, Anthropic multi-agent ladder: 3-5 simple, 10-15 complex); `fanout_warnings(brief)` (called in `SpawnBrief.__post_init__`, logged) flags out-of-band fan-outs with `TOKEN_MULTIPLIER_WARNING` (~15x single-chat tokens, research agents ~4x coding) — the sanctioned 10-15 complex band stays silent.
 
 ## 20. Artifact-Summary Dual Channel (0.11.0, issue #27)
-
 - `ArtifactStore` writes full worker outputs to `<root>/<run_id>/` and returns lightweight refs; `SummaryInjector.inject_front()` places per-worker summaries + refs at the FRONT of the coordinator context (after the system prefix), idempotent on re-inject (Lost in the Middle: front placement, mid-context recall collapses).
 - Deterministic `default_summarize` fallback; injectable `summarize` callable; summary schema driven by the P2 brief's `output_format`.
-
 ## 21. Playbook Structured Append Protocol (0.11.0, issue #28)
-
 - `PlaybookOp` (add/update/delete, provenance episodes required, typed validation) applied append-first to an append-only op log; `render()` folds deterministically with tombstones (history never rewritten); `trace(entry_id)` returns all originating episodes. Targets ACE failure modes: brevity bias + context collapse (arXiv 2510.04618).
 ## 22. KV-Cache Discipline (0.11.0, issue #29)
 - `assert_stable_prefix(turn_prompts)` flags turns whose prompt does not extend turn 0 byte-identically (lint-style CI hook).
