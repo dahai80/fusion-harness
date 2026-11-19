@@ -14,17 +14,34 @@ import re
 import threading
 import uuid
 from dataclasses import asdict, dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from fusion_harness.session_log import SessionEventLog
 from fusion_harness.spawn_protocol import SpawnBrief, brief_from_event
 from fusion_harness.subagent import SubagentResult, SubagentRunner, SubagentSpec
 from fusion_harness.team import TeamDefError, TeamDefinition, TeamMember
+from fusion_harness.team_topology import TopologyError, TopologySelector
 
 logger = logging.getLogger(__name__)
 
 TEAM_SPEC_CAP_BYTES = 4096
 MEMBER_CONTEXT_CAP_BYTES = 2048
+
+# Issue #101 phase 2: opt-in topology scheduling. Constructor arg wins;
+# when absent the env flag arms it (same env-flag convention as
+# FUSION_COMPACT_MLX / FUSION_PERMISSION_*). Default (unset) is OFF —
+# zero behavior change.
+TOPOLOGY_ENV_FLAG = "FUSION_TEAM_TOPOLOGY"
+# Sentinel remaining budget when no budget_ref is wired: the selector's
+# cost filter cannot reject anything, matching the unwired-budget status quo.
+_UNLIMITED_BUDGET = 2**31 - 1
+
+
+def _topology_enabled(explicit: Optional[bool]) -> bool:
+    if explicit is not None:
+        return bool(explicit)
+    return os.environ.get(TOPOLOGY_ENV_FLAG, "").strip().lower() in ("1", "true", "on")
+
 
 # Issue #63: per-run event stream event types (tool_* come from session_log).
 RUN_STREAM_DIR = "runs"
@@ -157,6 +174,9 @@ class TeamRuntime:
         bus=None,
         state_dir: str = "",
         clock: Callable[[], float] = None,
+        enable_topology_scheduling: Optional[bool] = None,
+        topology_selector: Optional[TopologySelector] = None,
+        budget_ref=None,
     ) -> None:
         self.definition = definition
         self.runner = runner or SubagentRunner(bus=bus)
@@ -167,6 +187,20 @@ class TeamRuntime:
         self._task_seq = 0
         self._inboxes: Dict[str, List[Dict[str, Any]]] = {m.name: [] for m in definition.members}
         self._supplement_queues: Dict[str, Any] = {}
+        # Issue #101 phase 2: selector proposes the per-step send set, the
+        # wired budget (same duck type LLMFunnel consumes) disposes. OFF by
+        # default — broadcast behavior is unchanged when disabled.
+        self.enable_topology_scheduling = _topology_enabled(enable_topology_scheduling)
+        self.topology_selector = topology_selector
+        self.budget_ref = budget_ref
+        if self.enable_topology_scheduling:
+            if self.topology_selector is None:
+                self.topology_selector = TopologySelector()
+            logger.info(
+                "topology scheduling enabled team=%s bank=%s",
+                definition.name,
+                ",".join(sorted(self.topology_selector.bank)),
+            )
         import time as _time
 
         self._clock = clock or _time.time
@@ -615,22 +649,92 @@ class TeamRuntime:
     def broadcast(self, sender: str, body: str, type_: str = "text", mentions: tuple = ()) -> int:
         """One delivery per member (sender excluded). Mentions validated
         against the member list up front — unknown mention rejects the whole
-        broadcast before anything is queued."""
+        broadcast before anything is queued. With topology scheduling
+        enabled (issue #101 phase 2) the selector proposes the per-step
+        send set first; every actual send still crosses the wired budget
+        gate (the selector proposes, the funnel disposes)."""
         self._require_member(sender)
         for name in mentions:
             self._require_member(name)
+        recipients = [m.name for m in self.definition.members if m.name != sender]
+        step = None
+        if self.enable_topology_scheduling:
+            recipients, step = self._topology_step(sender, body, recipients)
         delivered = 0
-        for member in self.definition.members:
-            if member.name == sender:
+        for name in recipients:
+            if step is not None and not self._send_budget_allows():
+                step["skipped"].append((sender, name))
+                logger.warning("topology send denied by budget gate recipient=%s", name)
                 continue
             outcome = self.send(
-                TeamMessage(
-                    type=type_, sender=sender, recipient=member.name, body=body, mentions=mentions
-                )
+                TeamMessage(type=type_, sender=sender, recipient=name, body=body, mentions=mentions)
             )
             if outcome["delivered"]:
                 delivered += 1
+                if step is not None:
+                    step["sends"][(sender, name)] = step["est_tokens"]
+                    self.topology_selector.record_send((sender, name), step["est_tokens"])
+            elif step is not None:
+                step["skipped"].append((sender, name))
+        if step is not None:
+            self.topology_selector.record_step(step["topology"], step["sends"], step["skipped"])
         return delivered
+
+    @staticmethod
+    def _estimate_tokens(body: str) -> int:
+        return max(1, len(body.encode("utf-8")) // 4)
+
+    def _remaining_budget(self) -> int:
+        """Step budget seen by the selector: lead budget minus what the
+        wired funnel budget has already spent (0 spent when unwired)."""
+        if self.budget_ref is None:
+            return _UNLIMITED_BUDGET
+        spent = int(getattr(self.budget_ref, "spent_tokens", 0) or 0)
+        return max(0, self.definition.lead_budget_tokens - spent)
+
+    def _send_budget_allows(self) -> bool:
+        """Funnel disposal on each proposed send: the same budget object
+        the LLMFunnel gates with gets the final word — an exhausted budget
+        denies the send even though the selector proposed it."""
+        if self.budget_ref is None:
+            return True
+        try:
+            return not bool(self.budget_ref.is_exceeded())
+        except TypeError:
+            return not bool(self.budget_ref.is_exceeded(""))
+
+    def _topology_step(
+        self, sender: str, body: str, recipients: List[str]
+    ) -> Tuple[List[str], Optional[Dict[str, Any]]]:
+        """Consult the selector for this step's send set. Failure mode
+        (stated per issue #101 phase 2): a TopologyError falls back to the
+        default full broadcast with a loud error log — chosen over
+        propagation so a scheduling fault cannot stall team delivery; the
+        fallback is never silent."""
+        roles = {m.name: m.role for m in self.definition.members}
+        remaining = self._remaining_budget()
+        try:
+            topology, edges = self.topology_selector.select(roles, remaining)
+        except TopologyError as exc:
+            logger.error("topology selector failed (%s); default broadcast fallback", exc)
+            return recipients, None
+        proposed = {dst for src, dst in edges if src == sender}
+        allowed = [name for name in recipients if name in proposed]
+        skipped = [(sender, name) for name in recipients if name not in proposed]
+        logger.info(
+            "topology step sender=%s topology=%s proposed=%d filtered=%d budget=%d",
+            sender,
+            topology,
+            len(allowed),
+            len(skipped),
+            remaining,
+        )
+        return allowed, {
+            "topology": topology,
+            "est_tokens": self._estimate_tokens(body),
+            "sends": {},
+            "skipped": skipped,
+        }
 
     def inbox(self, member_name: str) -> List[Dict[str, Any]]:
         self.definition.member(member_name)
