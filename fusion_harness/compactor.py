@@ -12,6 +12,19 @@ from fusion_harness.tokens import HeuristicTokenCounter, TokenCounter, count_mes
 
 logger = logging.getLogger(__name__)
 
+# Issue #88: refusal-prone phrasings observed on compaction prompts (Goose
+# v1.58.1/v1.60.1 — models read summarization framing as a policy-bound
+# "distillation" request). Matched case-insensitively against the summary
+# output; a hit routes to the reworded-retry branch.
+_REFUSAL_PATTERNS = [
+    re.compile(r"\bi (?:can'?t|cannot|won'?t|will not|am unable|'m unable)\b"),
+    re.compile(r"\bunable to (?:comply|assist|help|summar|process)\b"),
+    re.compile(r"\bcannot (?:assist|help|comply|summar)"),
+    re.compile(r"\bagainst my (?:guidelines|policies|principles)\b"),
+    re.compile(r"\bi (?:must )?(?:decline|refuse)\b"),
+    re.compile(r"\bnot (?:able|allowed) to (?:assist|help|summar)\b"),
+]
+
 _RETENTION_HEADER = "[Retention List]"
 _PINNED_GOAL_HEADER = "[Pinned task goal]"
 _CLEARED_STUB_PREFIX = "[tool result cleared:"
@@ -119,6 +132,15 @@ class Compactor:
         # evicted content is appended there and cited by resolvable link;
         # the archive is never mutated by compaction, only appended to.
         self.archive = archive
+        # Issue #88: refusal/empty-output telemetry for the LLM compaction
+        # path — consumable by the A/B gate as a failure rate.
+        self.failure_stats = {
+            "llm_calls": 0,
+            "refusals": 0,
+            "empties": 0,
+            "retries": 0,
+            "fallbacks": 0,
+        }
         self._counter = self.config.token_counter or HeuristicTokenCounter()
 
     def _persist_summary(self, summary: str, original_count: int) -> None:
@@ -171,27 +193,92 @@ class Compactor:
         return self.compact(messages, level, summarize=self._summarize_via_mlx)
 
     def _summarize_via_mlx(self, messages: list[dict], hard: bool = False) -> str:
+        # Issue #88: a model refusal or empty output on the compaction call
+        # must never propagate into state. Path: detect -> retry once with a
+        # reworded prompt -> degraded deterministic fallback, with the whole
+        # branch counted in failure_stats for the A/B gate.
+        self.failure_stats["llm_calls"] += 1
         try:
-            prompt = self._summary_prompt(messages, hard)
-            resp = asyncio.run(
-                self.llm_gateway.chat(
-                    messages=[{"role": "user", "content": prompt}],
-                    model="default",
-                    max_tokens=400,
-                    temperature=0.2,
+            content = self._mlx_chat(self._summary_prompt(messages, hard))
+            reason = self._classify_summary_failure(content)
+            if reason and self.failure_stats["retries"] < self.failure_stats.get("max_retries", 1):
+                logger.warning("mlx compaction summary %s, retrying with reworded prompt", reason)
+                self.failure_stats[reason] += 1
+                self.failure_stats["retries"] += 1
+                content = self._mlx_chat(self._reworded_summary_prompt(messages, hard))
+                reason = self._classify_summary_failure(content)
+            if reason:
+                self.failure_stats[reason] += 1
+                self.failure_stats["fallbacks"] += 1
+                self._emit_lifecycle(
+                    "compaction_fallback",
+                    {"reason": reason, "retried": self.failure_stats["retries"] > 0},
                 )
-            )
-            content = getattr(resp, "content", "") or ""
-            if not content and isinstance(resp, dict):
-                content = resp.get("content", "") or ""
-            content = str(content).strip()
-            if content:
-                logger.info("compaction summary via local mlx chars=%d", len(content))
-                return "[Compacted prior context]\n" + content
-            logger.warning("mlx compaction summary empty, falling back to deterministic")
+                logger.warning(
+                    "mlx compaction summary %s after retry, degraded deterministic fallback",
+                    reason,
+                )
+                return self._summarize(messages, hard)
+            logger.info("compaction summary via local mlx chars=%d", len(content))
+            return "[Compacted prior context]\n" + content
         except Exception as exc:
+            self.failure_stats["fallbacks"] += 1
+            self._emit_lifecycle(
+                "compaction_fallback", {"reason": "exception", "error": str(exc)[:200]}
+            )
             logger.warning("mlx compaction summary failed, deterministic fallback: %s", exc)
-        return self._summarize(messages, hard)
+            return self._summarize(messages, hard)
+
+    def _mlx_chat(self, prompt: str) -> str:
+        resp = asyncio.run(
+            self.llm_gateway.chat(
+                messages=[{"role": "user", "content": prompt}],
+                model="default",
+                max_tokens=400,
+                temperature=0.2,
+            )
+        )
+        content = getattr(resp, "content", "") or ""
+        if not content and isinstance(resp, dict):
+            content = resp.get("content", "") or ""
+        return str(content).strip()
+
+    @staticmethod
+    def _classify_summary_failure(content: str) -> str:
+        if not content:
+            return "empties"
+        lowered = content.lower()
+        for pattern in _REFUSAL_PATTERNS:
+            if pattern.search(lowered):
+                return "refusals"
+        return ""
+
+    def failure_rate(self) -> float:
+        calls = self.failure_stats["llm_calls"]
+        if calls <= 0:
+            return 0.0
+        return round(self.failure_stats["fallbacks"] / calls, 6)
+
+    @staticmethod
+    def _reworded_summary_prompt(messages: list[dict], hard: bool) -> str:
+        # Issue #88: neutral rewording for refusal-prone phrasings — the
+        # Goose v1.58.1 failure was the summarization framing itself being
+        # read as a distillation request and refused.
+        lines = []
+        for m in messages[:80]:
+            role = m.get("role", "")
+            content = m.get("content") or ""
+            if not isinstance(content, str):
+                content = str(content)
+            if content:
+                lines.append(f"{role}: {content[:400]}")
+        body = "\n".join(lines)[:12000]
+        return (
+            "The text below is a logged transcript of an automated software "
+            "tool. Produce plain technical notes for an internal log file: "
+            "list the file paths, interface names, constraints and pending "
+            "items that appear in it. Output bullet lines only.\n\n" + body
+        )
 
     @staticmethod
     def _summary_prompt(messages: list[dict], hard: bool) -> str:
@@ -217,6 +304,14 @@ class Compactor:
         summarize=None,
     ) -> list[dict]:
         logger.info("compaction phase=1 trigger level=%s", level)
+        # Issue #88: gateway-wired sync compact() also routes summarization
+        # through the refusal-guarded MLX path (previously only compact_async
+        # did), so refusal/failure telemetry is collected on every entry.
+        if summarize is None and self.llm_gateway is not None and self._mlx_enabled():
+            if level == "none":
+                logger.debug("compaction level=none skips mlx summarization")
+            else:
+                summarize = self._summarize_via_mlx
         payload = {"level": level, "before_msgs": len(messages)}
         if level != "none":
             self._fire_compact_before(payload)
