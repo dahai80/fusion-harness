@@ -7,7 +7,7 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.25.0
+version: 0.26.0
 updated: 2026-11-19
 owner: "@dahai"
 source_of_truth:
@@ -15,6 +15,41 @@ source_of_truth:
 ---
 
 # Changelog
+
+## 0.26.0 (2026-11-19)
+
+Agent-practices wave 4: self-check hooks on the two coordination engines
+(#131-#134) — post-compaction validation, edge-level failure candidates,
+team-phase evaluator checkpoints, duplicate-work detection.
+
+### Post-compaction state validation (issue #131)
+
+- `CompactionConfig.validator`: optional callback run after every
+  compaction; bool or (ok, verdict) result, exceptions become a failing
+  verdict. Emits `compaction_validated` with before/after tokens and
+  verdict. Unwired = zero behavior change.
+
+### Edge-level failure candidates (issue #132)
+
+- `FailureAnalyzer` run reports gain `handoff_candidates`: consecutive
+  node switches within a 3-step window of the decisive moment, each with
+  from_node / to_node / distance / reason — isolates whether the handoff
+  between agents, not an agent itself, caused the failure.
+
+### Team-phase evaluator checkpoint (issue #133)
+
+- `ParallelTeam(phase_evaluator=..., lifecycle_bus=...)`: after the
+  member phase, a falsy verdict, `{"ok": false, "reason": ...}` dict, or
+  evaluator exception marks surviving member outcomes `blocked` and
+  emits `team_evaluator_block`. Fail-safe, never re-raised.
+
+### Duplicate-work detection (issue #134)
+
+- `TeamRuntime(duplicate_threshold=N)`: observed tool_call events fold
+  into per-phase counters keyed by normalized `tool(sorted-args)`
+  (values truncated to 120 chars). N distinct members on the same key
+  emit one `team_duplicate_work` + logged warning; counts exposed via
+  `duplicate_work_stats()`. Deterministic, zero model calls, default off.
 
 ## 0.25.0 (2026-11-19)
 

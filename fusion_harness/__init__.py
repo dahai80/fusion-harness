@@ -144,7 +144,7 @@ from fusion_harness.policies import (
     idempotency_key,
 )
 
-KERNEL_VERSION = "0.25.0"
+KERNEL_VERSION = "0.26.0"
 
 __all__ = [
     "KERNEL_VERSION",
