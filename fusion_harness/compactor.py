@@ -107,6 +107,12 @@ class CompactionConfig:
     # default) keeps compaction consumer-invoked — no behavior change unless
     # the consumer opts in.
     trigger_ratio: float | None = None
+    # Issue #131: optional post-compaction validation hook. Called after
+    # compaction with (compacted_messages, original_token_count); may return
+    # bool or (bool, verdict_str). Failure (exception or falsy) logs a
+    # warning and emits `compaction_validated` — it never gates or reverts
+    # the compaction (upgrade, not dependency). None = zero behavior change.
+    validator: Any = None
 
     def __post_init__(self) -> None:
         if self.trigger_ratio is not None and not 0.0 < self.trigger_ratio <= 1.0:
@@ -396,6 +402,18 @@ class Compactor:
         )
         if level != "none":
             self._emit_lifecycle("compact_after", {**payload, "after_msgs": len(msgs)})
+        if self.config.validator is not None:
+            ok, verdict = self._run_validator(msgs, before_tokens)
+            self._emit_lifecycle(
+                "compaction_validated",
+                {
+                    "ok": ok,
+                    "verdict": verdict,
+                    "level": level,
+                    "before_tokens": before_tokens,
+                    "after_tokens": after_tokens,
+                },
+            )
         return msgs
 
     def _fire_compact_before(self, payload: dict) -> None:
@@ -410,6 +428,28 @@ class Compactor:
             asyncio.ensure_future(self.hooks.fire("COMPACT_BEFORE", payload))
         except Exception as exc:
             logger.warning("COMPACT_BEFORE hook dispatch failed: %s", exc)
+
+    def _run_validator(self, msgs: list[dict], before_tokens: int) -> tuple[bool, str]:
+        """Issue #131: run the optional post-compaction validator. Failures
+        are observational only — a validator error or falsy verdict never
+        gates or reverts the compaction."""
+        validator = self.config.validator
+        if validator is None:
+            return True, ""
+        try:
+            result = validator(msgs, before_tokens)
+            if isinstance(result, tuple):
+                ok, verdict = bool(result[0]), str(result[1])
+            else:
+                ok, verdict = bool(result), ""
+        except Exception as exc:
+            ok, verdict = False, "validator error: %s" % str(exc)[:200]
+            logger.warning("post-compaction validator raised: %s", exc)
+        if not ok:
+            logger.warning("post-compaction validation failed verdict=%s", verdict)
+        else:
+            logger.info("post-compaction validation ok verdict=%s", verdict)
+        return ok, verdict
 
     def _emit_lifecycle(self, event: str, payload: dict) -> None:
         if self.lifecycle_bus is None:
