@@ -102,6 +102,31 @@ class CompactionConfig:
     clear_tool_results: bool = True
     pin_task_goal: bool = True
     cache_advisor: Any = None
+    # Issue #122: threshold-triggered compaction policy. Industry practice
+    # converges on triggering at ~80-92% of the context window. None (the
+    # default) keeps compaction consumer-invoked — no behavior change unless
+    # the consumer opts in.
+    trigger_ratio: float | None = None
+
+    def __post_init__(self) -> None:
+        if self.trigger_ratio is not None and not 0.0 < self.trigger_ratio <= 1.0:
+            raise ValueError(
+                "trigger_ratio must be in (0.0, 1.0] or None: %r" % (self.trigger_ratio,)
+            )
+
+    def trigger_threshold(self) -> int | None:
+        """Absolute token threshold implied by trigger_ratio; None = off."""
+        if self.trigger_ratio is None:
+            return None
+        return int(self.context_window * self.trigger_ratio)
+
+    def should_auto_compact(self, tokens: int) -> bool:
+        """Single policy consult for LLMFunnel/sidecar: True when the token
+        count crosses the trigger threshold. Always False while disabled."""
+        threshold = self.trigger_threshold()
+        if threshold is None:
+            return False
+        return tokens >= threshold
 
     def warning_threshold(self) -> int:
         return self.context_window - self.warning_buffer

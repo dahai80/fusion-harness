@@ -145,6 +145,7 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 
 - `CompactionConfig.cache_advisor` exposes `suggest_keep_rounds(messages) -> int`; the compactor takes `max(config.keep_recent_rounds, suggested)` — advice can only reduce compaction aggressiveness (protect prefix-cache stability), never increase it. Advisor failure logs a warning and uses config.
 
+- **Threshold-triggered compaction (issue #122)**: `CompactionConfig.trigger_ratio` (default None = consumer-invoked, zero behavior change) derives a single auto-trigger policy at `int(context_window * trigger_ratio)` — `trigger_threshold()` returns None while off, `should_auto_compact(tokens)` is the one consult for LLMFunnel/sidecar; ratios outside (0.0, 1.0] raise `ValueError` (loud), buffer-based `should_compact` levels are unchanged. Industry source: Anthropic effective-context-engineering (~80-92% of window).
 ## 15. Memory Binding (0.9.0, plan P3-2)
 
 - `MemorySink.store(key, payload, metadata)` / `MemorySource.retrieve(query, limit)`; `MemoryBridge.persist_compaction` and `recall`/`inject_context` (just-in-time, bounded, inserted after the system prefix). Sink/source failures are logged no-ops — memory is an upgrade, never a dependency.
@@ -178,7 +179,6 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 ## 21. Playbook Structured Append Protocol (0.11.0, issue #28)
 
 - `PlaybookOp` (add/update/delete, provenance episodes required, typed validation) applied append-first to an append-only op log; `render()` folds deterministically with tombstones (history never rewritten); `trace(entry_id)` returns all originating episodes. Targets ACE failure modes: brevity bias + context collapse (arXiv 2510.04618).
-
 ## 22. KV-Cache Discipline (0.11.0, issue #29)
 - `assert_stable_prefix(turn_prompts)` flags turns whose prompt does not extend turn 0 byte-identically (lint-style CI hook).
 - `check_append_only(before, after, compaction=False)`: context mutation must be append-only; rewrites only at explicit compaction boundaries.
