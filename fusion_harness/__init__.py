@@ -103,6 +103,13 @@ from fusion_harness.code_mode import (
     parse_code_block,
     render_stubs,
 )
+from fusion_harness.failure_attribution import (
+    MAST_CLUSTERS,
+    MASTMode,
+    FailureAnalyzer,
+    FailureVerdict,
+    cluster_of,
+)
 from fusion_harness.file_segment import (
     DEFAULT_MAX_BYTES_CAP,
     SegmentBudget,
@@ -248,6 +255,11 @@ __all__ = [
     "Deadline",
     "DeadlineExceeded",
     "Effect",
+    "MAST_CLUSTERS",
+    "MASTMode",
+    "FailureAnalyzer",
+    "FailureVerdict",
+    "cluster_of",
     "HookConfig",
     "HookEngine",
     "HookResult",
