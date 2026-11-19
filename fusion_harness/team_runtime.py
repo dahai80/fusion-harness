@@ -36,6 +36,20 @@ TOPOLOGY_ENV_FLAG = "FUSION_TEAM_TOPOLOGY"
 # cost filter cannot reject anything, matching the unwired-budget status quo.
 _UNLIMITED_BUDGET = 2**31 - 1
 
+# Issue #134: deterministic duplicate-work detection across members.
+# Opt-in via duplicate_threshold (None = off, zero behavior change).
+DUP_VALUE_CAP = 120
+
+
+def _normalize_tool_key(tool: str, args: Any) -> str:
+    pairs = []
+    for name, value in sorted((args or {}).items()):
+        text = str(value)
+        if len(text) > DUP_VALUE_CAP:
+            text = text[:DUP_VALUE_CAP]
+        pairs.append("%s=%s" % (name, text))
+    return "%s(%s)" % (tool, ",".join(pairs))
+
 
 def _topology_enabled(explicit: Optional[bool]) -> bool:
     if explicit is not None:
@@ -177,6 +191,7 @@ class TeamRuntime:
         enable_topology_scheduling: Optional[bool] = None,
         topology_selector: Optional[TopologySelector] = None,
         budget_ref=None,
+        duplicate_threshold: Optional[int] = None,
     ) -> None:
         self.definition = definition
         self.runner = runner or SubagentRunner(bus=bus)
@@ -204,6 +219,14 @@ class TeamRuntime:
         import time as _time
 
         self._clock = clock or _time.time
+        # Issue #134: duplicate-work detection. None = off; an int N >= 2
+        # arms emission when N distinct members make the same normalized
+        # tool call within the same phase (task). Purely observational.
+        if duplicate_threshold is not None and duplicate_threshold < 2:
+            raise ValueError("duplicate_threshold must be None or >= 2")
+        self.duplicate_threshold = duplicate_threshold
+        self._tool_dupes: Dict[str, Dict[str, Dict[str, Any]]] = {}
+        self._dup_emitted: set = set()
 
     # ---------- lifecycle ----------
 
@@ -435,6 +458,8 @@ class TeamRuntime:
         def _sink(event_type: str, payload: dict) -> None:
             if stream is not None:
                 stream.append(event_type, {**base_payload, **_redact(payload)})
+            if self.duplicate_threshold is not None and event_type == "tool_call":
+                self._record_tool_call(task_id, member.name, payload)
 
         captured: Dict[str, Any] = {}
 
@@ -489,6 +514,62 @@ class TeamRuntime:
             {"member": member.name, "task_id": task_id, "status": result.status},
         )
         return result
+
+    def _record_tool_call(self, task_id: str, member: str, payload: dict) -> None:
+        """Issue #134: fold one observed tool_call into the duplicate-work
+        counters. Deterministic normalization (tool + sorted arg pairs,
+        values truncated to DUP_VALUE_CAP); emission is observational and
+        once per (phase, key) — a detection error never breaks the sink."""
+        try:
+            tool = str(payload.get("tool", ""))
+            if not tool:
+                return
+            args = payload.get("args", payload.get("input"))
+            key = _normalize_tool_key(tool, args)
+            phase = self._tool_dupes.setdefault(task_id, {})
+            entry = phase.setdefault(key, {"count": 0, "members": []})
+            entry["count"] += 1
+            if member not in entry["members"]:
+                entry["members"].append(member)
+            if (
+                len(entry["members"]) >= self.duplicate_threshold
+                and (
+                    task_id,
+                    key,
+                )
+                not in self._dup_emitted
+            ):
+                self._dup_emitted.add((task_id, key))
+                self._emit(
+                    "team_duplicate_work",
+                    {
+                        "task_id": task_id,
+                        "key": key,
+                        "members": list(entry["members"]),
+                        "count": entry["count"],
+                    },
+                )
+                logger.warning(
+                    "duplicate work detected team=%s task=%s members=%s key=%s",
+                    self.definition.name,
+                    task_id,
+                    ",".join(entry["members"]),
+                    key[:200],
+                )
+        except Exception as exc:
+            logger.warning("duplicate-work detection failed task=%s: %s", task_id, exc)
+
+    def duplicate_work_stats(self, task_id: str = "") -> Dict[str, Any]:
+        """Issue #134: observed duplicate-work counters keyed by phase
+        (task_id), then normalized tool key. Empty task_id aggregates all
+        phases. Exposed for stats/scorecard surfaces; read-only."""
+        phases = {task_id: self._tool_dupes.get(task_id, {})} if task_id else self._tool_dupes
+        return {
+            phase: {
+                key: {"count": e["count"], "members": list(e["members"])} for key, e in keys.items()
+            }
+            for phase, keys in phases.items()
+        }
 
     # ---------- mid-run steering (issue #64) ----------
 
