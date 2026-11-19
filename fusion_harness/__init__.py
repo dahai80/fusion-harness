@@ -182,6 +182,7 @@ from fusion_harness.permissions import (
     PermissionRule,
     score_tool_risk,
 )
+from fusion_harness.stream_guard import SURFACES as LOOP_SURFACES, LoopDetector
 from fusion_harness.session_log import (
     LogSchemaError,
     SessionEvent,
@@ -345,6 +346,8 @@ __all__ = [
     "PERMISSIVENESS",
     "map_risk_to_tier",
     "LifecycleBus",
+    "LoopDetector",
+    "LOOP_SURFACES",
     "LogSchemaError",
     "MonotonicGuard",
     "OutboxStore",
