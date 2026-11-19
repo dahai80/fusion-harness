@@ -173,11 +173,131 @@ class BadSummarizer:
         return out
 
 
+def run_consolidation_fixture(
+    consolidator: Any,
+    fixture: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Consolidation axis (issue #99): apply the fixture's FOLD/DROP
+    annotations through the consolidator under test, then score marker
+    survival, rule recall, undo correctness (fold -> rehydrate -> original
+    text back) and state-cap compliance (refusal where one is expected).
+    """
+    from fusion_harness.consolidation import ConsolidationError
+
+    full = list(fixture["messages"])
+    consolidated = list(full)
+    undo_ok = True
+    for start, end, summary in fixture.get("folds", []):
+        try:
+            consolidated = consolidator.fold(consolidated, start, end, summary)
+            restored = consolidator.undo_fold(consolidated, start)
+            original_texts = [full[i].get("content") for i in range(start, end)]
+            restored_texts = [m.get("content") for m in restored[start : start + (end - start)]]
+            if original_texts != restored_texts:
+                undo_ok = False
+                logger.warning("undo mismatch fixture=%s scope=%s", fixture["name"], [start, end])
+        except Exception as e:
+            undo_ok = False
+            logger.warning("fold/undo failed fixture=%s err=%s", fixture["name"], e)
+    for start, end, reason in fixture.get("drops", []):
+        try:
+            consolidated = consolidator.drop(consolidated, start, end, reason)
+        except ConsolidationError:
+            pass
+    cap_ok = True
+    case = fixture.get("rewrite_case")
+    if case:
+        try:
+            consolidator.rewrite(case["prev_state"], case["observation"])
+            if case.get("expect_refusal"):
+                cap_ok = False
+        except ConsolidationError:
+            cap_ok = bool(case.get("expect_refusal"))
+        except Exception as e:
+            logger.warning("rewrite case error fixture=%s err=%s", fixture["name"], e)
+            cap_ok = False
+    score = stub_score(consolidated, fixture)
+    counter = HeuristicTokenCounter()
+    tokens_full = count_messages(full, counter)
+    tokens_consolidated = count_messages(consolidated, counter)
+    result = {
+        "name": fixture["name"],
+        "success": score["success"],
+        "rule_recall": score["rule_recall"],
+        "undo_ok": undo_ok,
+        "cap_ok": cap_ok,
+        "tokens_full": tokens_full,
+        "tokens_consolidated": tokens_consolidated,
+        "tokens_saved": tokens_full - tokens_consolidated,
+    }
+    logger.info(
+        "consolidation-bench fixture=%s success=%s undo_ok=%s cap_ok=%s recall=%.3f saved=%d",
+        result["name"],
+        result["success"],
+        undo_ok,
+        cap_ok,
+        result["rule_recall"],
+        result["tokens_saved"],
+    )
+    return result
+
+
+def run_consolidation_suite(consolidator: Any, fixtures: List[Dict[str, Any]]) -> Dict[str, Any]:
+    results = [run_consolidation_fixture(consolidator, f) for f in fixtures]
+    failed = [
+        r["name"]
+        for r in results
+        if not (
+            r["success"]
+            and r["undo_ok"]
+            and r["cap_ok"]
+            and r["rule_recall"] >= DEFAULT_MIN_RULE_RECALL
+        )
+    ]
+    return {"fixtures": results, "failed": failed, "passed": not failed}
+
+
+def assert_consolidation_gate(report: Dict[str, Any]) -> None:
+    """CI gate for the consolidation axis: any marker loss, rule loss,
+    undo failure or state-cap violation names the offending fixture."""
+    bad = []
+    for r in report["fixtures"]:
+        if not (
+            r["success"]
+            and r["undo_ok"]
+            and r["cap_ok"]
+            and r["rule_recall"] >= DEFAULT_MIN_RULE_RECALL
+        ):
+            bad.append(
+                "%s (success=%s undo_ok=%s cap_ok=%s recall=%.3f)"
+                % (r["name"], r["success"], r["undo_ok"], r["cap_ok"], r["rule_recall"])
+            )
+    if bad:
+        raise EvalGateError("consolidation-bench gate failed: " + "; ".join(bad))
+
+
+class BadConsolidator:
+    """Seeded known-bad consolidator (issue #99): folds ranges into stubs
+    that carry no archive link and silently drop pinned rules — the
+    consolidation-laundering failure mode. Must FAIL the gate."""
+
+    def fold(self, messages, start, end, summary):
+        stub = {"role": "system", "content": "[fold] lossy: %s" % summary}
+        return messages[:start] + [stub] + messages[end:]
+
+    def drop(self, messages, start, end, reason):
+        return messages[:start] + messages[end:]
+
+
 __all__ = [
+    "BadConsolidator",
     "BadSummarizer",
     "EvalGateError",
+    "assert_consolidation_gate",
     "assert_gate",
     "load_fixtures",
+    "run_consolidation_fixture",
+    "run_consolidation_suite",
     "run_fixture",
     "run_suite",
     "stub_score",
