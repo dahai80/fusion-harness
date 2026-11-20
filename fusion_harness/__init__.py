@@ -65,6 +65,7 @@ from fusion_harness.team import (
     TeamDefinition,
     TeamMember,
 )
+from fusion_harness.tier_policy import TIER_POLICY, recommend_tier
 from fusion_harness.scoped_permissions import (
     ScopedPermission,
     ScopedPermissionEngine,
@@ -199,6 +200,8 @@ __all__ = [
     "TeamDefinition",
     "TeamDefError",
     "VALID_MODEL_TIERS",
+    "TIER_POLICY",
+    "recommend_tier",
     "TeamRuntime",
     "TeamTask",
     "TeamMessage",
