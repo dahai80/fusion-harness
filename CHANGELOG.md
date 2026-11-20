@@ -7,7 +7,7 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.28.0
+version: 0.29.0
 updated: 2026-11-20
 owner: "@dahai"
 source_of_truth:
@@ -15,6 +15,26 @@ source_of_truth:
 ---
 
 # Changelog
+
+## 0.29.0 (2026-11-20)
+
+Optional fusion-executor backend for SandboxPolicy (issue #150, user
+ruling 2026-11-20): native macOS sandbox + PTY + Git-snapshot rollback
+as an opt-in execution backend. The 0-runtime-dep invariant holds —
+the adapter is an optional extra with a lazy import.
+
+### Optional execution backend
+
+- `FusionExecutorBackend`: SandboxRunner-protocol adapter over
+  `fusion_executor.FusionSandboxExecutor`. Absent package / unbuilt
+  native extension = typed `ExecutorBackendUnavailable`; core paths
+  gain zero dependencies.
+- **Rollback policy**: Git snapshot before each sandboxed run
+  (`last_snapshot_id`), explicit `snapshot()` at factory-impl-node
+  entry, `rollback(id)` restores pre-node state for failed nodes.
+- `select_sandbox_runner(preferred, default_runner)`: deterministic
+  fallback with logged warning; no-runner deny behavior unchanged
+  (fail-closed). Other consumers unaffected.
 
 ## 0.28.0 (2026-11-20)
 
