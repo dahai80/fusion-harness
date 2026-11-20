@@ -15,6 +15,7 @@ from fusion_harness.checkpoint import (
     CheckpointStore,
 )
 from fusion_harness.destructive_gate import ApprovalGate
+from fusion_harness.untrusted import INJECTION_PATTERNS, scan_untrusted
 from fusion_harness.compactor import (
     CompactionConfig,
     Compactor,
@@ -157,6 +158,8 @@ __all__ = [
     "ScanReport",
     "CheckpointState",
     "ApprovalGate",
+    "INJECTION_PATTERNS",
+    "scan_untrusted",
     "CheckpointStore",
     "CacheTelemetry",
     "ConfirmationPolicy",
