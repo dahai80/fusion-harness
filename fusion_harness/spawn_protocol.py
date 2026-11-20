@@ -13,6 +13,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
+from .team import VALID_MODEL_TIERS
+
 logger = logging.getLogger(__name__)
 
 
@@ -54,6 +56,8 @@ class SpawnBrief:
     concurrency: int
     depth: int
     metadata: Dict[str, Any] = field(default_factory=dict)
+    # Issue #141: phase-level tier hint, same vocabulary as TeamMember.
+    model_tier: str = ""
 
     def __post_init__(self) -> None:
         errors = validate_brief(self)
@@ -85,6 +89,13 @@ def validate_brief(brief: Any) -> List[str]:
         errors.append(
             "concurrency %d exceeds fan-out hard max %d (Anthropic multi-agent ladder)"
             % (concurrency, FANOUT_HARD_MAX)
+        )
+    # Issue #141: tier hint vocabulary shared with TeamMember (empty = unspecified).
+    tier = getattr(brief, "model_tier", "")
+    if tier and tier not in VALID_MODEL_TIERS:
+        errors.append(
+            "unknown model tier %r (valid: %s)"
+            % (tier, ", ".join(t or "(unspecified)" for t in VALID_MODEL_TIERS))
         )
     return errors
 
@@ -195,6 +206,7 @@ __all__ = [
     "FANOUT_SIMPLE_MAX",
     "MULTI_AGENT_TOKEN_MULTIPLIER",
     "TOKEN_MULTIPLIER_WARNING",
+    "VALID_MODEL_TIERS",
     "SpawnBrief",
     "SpawnBriefError",
     "validate_brief",

@@ -7,7 +7,7 @@ import os
 import pytest
 
 from fusion_harness.funnels import LifecycleBus
-from fusion_harness.spawn_protocol import SpawnBrief
+from fusion_harness.spawn_protocol import SpawnBrief, SpawnBriefError
 from fusion_harness.subagent import SubagentResult
 from fusion_harness.team import TeamDefError, TeamDefinition, TeamMember
 from fusion_harness.team_runtime import (
@@ -34,7 +34,7 @@ def _definition(**kw):
     return TeamDefinition(**params)
 
 
-def _brief(token_budget=5000):
+def _brief(token_budget=5000, **kw):
     return SpawnBrief(
         objective="scan module X",
         output_format="json findings list",
@@ -43,6 +43,7 @@ def _brief(token_budget=5000):
         token_budget=token_budget,
         concurrency=1,
         depth=1,
+        **kw,
     )
 
 
@@ -381,3 +382,28 @@ class TestBusEvents:
         rt.send(TeamMessage(type="text", sender="lead", recipient="worker1", body="b"))
         assert "team.task.added" in events
         assert "team.msg.sent" in events
+
+
+class TestModelTierVocabulary:
+    def test_member_default_unspecified(self):
+        m = _member("scout")
+        assert m.model_tier == ""
+
+    def test_member_valid_tiers_accepted(self):
+        assert _member("scout", model_tier="cheap").model_tier == "cheap"
+        assert _member("planner", model_tier="strong").model_tier == "strong"
+
+    def test_member_invalid_tier_rejected(self):
+        with pytest.raises(TeamDefError):
+            _member("scout", model_tier="huge")
+
+    def test_brief_invalid_tier_rejected(self):
+        with pytest.raises(SpawnBriefError):
+            _brief(model_tier="mid")
+
+    def test_brief_valid_tier_accepted(self):
+        brief = _brief(model_tier="cheap")
+        assert brief.model_tier == "cheap"
+
+    def test_brief_tier_unspecified_default(self):
+        assert _brief().model_tier == ""

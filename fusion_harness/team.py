@@ -17,6 +17,10 @@ logger = logging.getLogger(__name__)
 
 _MEMBER_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 _VALID_MODES = ("bypass", "approved", "default", "plan")
+# Issue #141: per-member model-tier hint. The kernel never resolves the hint
+# to an actual model — consumers own the mapping (kernel stays
+# model-agnostic, no model calls, deterministic). Empty = unspecified.
+VALID_MODEL_TIERS = ("", "cheap", "strong")
 
 
 class TeamDefError(TypeError):
@@ -33,6 +37,7 @@ class TeamMember:
     budget_tokens: int = 50_000
     max_concurrency: int = 1
     context: str = ""
+    model_tier: str = ""
 
     def __post_init__(self) -> None:
         if not _MEMBER_NAME_RE.match(self.name or ""):
@@ -41,6 +46,11 @@ class TeamMember:
             raise TeamDefError("member role required: %s" % self.name)
         if self.permission_mode not in _VALID_MODES:
             raise TeamDefError("unknown permission mode: %s" % self.permission_mode)
+        if self.model_tier not in VALID_MODEL_TIERS:
+            raise TeamDefError(
+                "unknown model tier %r (valid: %s)"
+                % (self.model_tier, ", ".join(t or "(unspecified)" for t in VALID_MODEL_TIERS))
+            )
         if self.budget_tokens <= 0 or self.max_concurrency <= 0:
             raise TeamDefError("budget_tokens and max_concurrency must be positive: %s" % self.name)
 
