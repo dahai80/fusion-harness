@@ -7,14 +7,38 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.26.0
-updated: 2026-11-19
+version: 0.27.0
+updated: 2026-11-20
 owner: "@dahai"
 source_of_truth:
   - CHANGELOG.md
 ---
 
 # Changelog
+
+## 0.27.0 (2026-11-20)
+
+Model-tier vocabulary + deterministic tier policy (issues #141+#142):
+the biggest untaken cost lever in multi-agent paths (FrugalGPT
+arXiv:2305.05176, RouteLLM arXiv:2406.18665) — the kernel gains the
+vocabulary and the policy, never the routing model.
+
+### Model-tier vocabulary (issue #141)
+
+- `TeamMember.model_tier` and `SpawnBrief.model_tier` carry
+  `VALID_MODEL_TIERS` (`""`/`"cheap"`/`"strong"`), validated at
+  construction (`TeamDefError`/`SpawnBriefError`). Consumers own the
+  mapping to actual models; zero model calls.
+
+### Per-phase tier policy hook (issue #142)
+
+- `tier_policy.recommend_tier(step_kind)`: deterministic table —
+  tool_call/planning/member_execution -> cheap,
+  synthesis/decision/verification -> strong, unknown -> "" (fail-open).
+- `TeamRuntime.run_member` resolves precedence explicit member tier >
+  brief hint > policy default into `spec.metadata["model_tier"]` and
+  emits `tier_recommendation` {member, task_id, tier, source, reason}
+  so cascade effect is measurable in ObservabilityLoop.
 
 ## 0.26.0 (2026-11-19)
 
