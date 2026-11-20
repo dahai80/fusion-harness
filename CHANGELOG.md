@@ -7,7 +7,7 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.27.0
+version: 0.28.0
 updated: 2026-11-20
 owner: "@dahai"
 source_of_truth:
@@ -15,6 +15,35 @@ source_of_truth:
 ---
 
 # Changelog
+
+## 0.28.0 (2026-11-20)
+
+Untrusted-data discipline + escalation invariant (issue #147) — the
+harness answer to indirect prompt injection via tool results
+(AgentDojo arXiv:2406.13352, InjecAgent arXiv:2403.02691). A
+structural differentiator: LangGraph / CrewAI / OpenHands ship no
+equivalent invariant.
+
+### Untrusted-data discipline (S2)
+
+- New pure module `fusion_harness.untrusted`: `INJECTION_PATTERNS`
+  table + `scan_untrusted(text)` — deterministic regex, zero model
+  calls.
+- `ToolFunnel.run_tool` scans every tool result: matches set
+  `funnel.untrusted_seen`, emit `tool_result_scan` {origin:
+  "tool_result", untrusted, matches}; `tool.after` payloads carry
+  `origin: "tool_result"`.
+- `content_scan` permission rule source extended with the same
+  heuristics over call args.
+
+### Escalation invariant (S3)
+
+- While `untrusted_seen`, destructive-class calls with no wired
+  approval gate are denied at a new `escalation` stage — regardless of
+  permission mode including bypass and permission opt-out; typed
+  reason + `escalation_invariant` event.
+- Wired gate satisfies the invariant through stage 2c host approval.
+  The invariant only adds denials, never widens.
 
 ## 0.27.0 (2026-11-20)
 
