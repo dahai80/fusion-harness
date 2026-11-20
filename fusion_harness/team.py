@@ -18,6 +18,11 @@ logger = logging.getLogger(__name__)
 _MEMBER_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 _VALID_MODES = ("bypass", "approved", "default", "plan")
 
+# Issue #141: per-member model-tier vocabulary. The kernel never resolves
+# the hint to an actual model — consumers own the mapping (kernel stays
+# model-agnostic, zero model calls, deterministic). "" = unspecified.
+VALID_MODEL_TIERS = ("", "cheap", "strong")
+
 
 class TeamDefError(TypeError):
     """Raised on illegal team definitions (fail visibly)."""
@@ -33,6 +38,7 @@ class TeamMember:
     budget_tokens: int = 50_000
     max_concurrency: int = 1
     context: str = ""
+    model_tier: str = ""
 
     def __post_init__(self) -> None:
         if not _MEMBER_NAME_RE.match(self.name or ""):
@@ -43,6 +49,10 @@ class TeamMember:
             raise TeamDefError("unknown permission mode: %s" % self.permission_mode)
         if self.budget_tokens <= 0 or self.max_concurrency <= 0:
             raise TeamDefError("budget_tokens and max_concurrency must be positive: %s" % self.name)
+        if self.model_tier not in VALID_MODEL_TIERS:
+            raise TeamDefError(
+                "unknown model tier %r (valid: cheap, strong, or empty)" % self.model_tier
+            )
 
 
 @dataclass
@@ -73,6 +83,11 @@ class TeamDefinition:
                     "member %s budget %d exceeds lead budget %d (Deadline.child semantics)"
                     % (member.name, member.budget_tokens, self.lead_budget_tokens)
                 )
+            if member.model_tier not in VALID_MODEL_TIERS:
+                raise TeamDefError(
+                    "member %s has unknown model tier %r (valid: cheap, strong, or empty)"
+                    % (member.name, member.model_tier)
+                )
 
     @property
     def memory_anchor(self) -> Dict[str, str]:
@@ -85,4 +100,4 @@ class TeamDefinition:
         raise TeamDefError("unknown member: %s" % name)
 
 
-__all__ = ["TeamMember", "TeamDefinition", "TeamDefError"]
+__all__ = ["TeamMember", "TeamDefinition", "TeamDefError", "VALID_MODEL_TIERS"]

@@ -43,6 +43,11 @@ TOKEN_MULTIPLIER_WARNING = (
     "coding agents) — budget accordingly" % MULTI_AGENT_TOKEN_MULTIPLIER
 )
 
+# Issue #141: phase-level model-tier hint. Vocabulary matches
+# team.VALID_MODEL_TIERS ("cheap"/"strong"/"" unspecified); the kernel
+# never resolves the hint to an actual model — consumers own the mapping.
+MODEL_TIERS = ("cheap", "strong")
+
 
 @dataclass
 class SpawnBrief:
@@ -54,6 +59,7 @@ class SpawnBrief:
     concurrency: int
     depth: int
     metadata: Dict[str, Any] = field(default_factory=dict)
+    model_tier: str = ""
 
     def __post_init__(self) -> None:
         errors = validate_brief(self)
@@ -86,6 +92,9 @@ def validate_brief(brief: Any) -> List[str]:
             "concurrency %d exceeds fan-out hard max %d (Anthropic multi-agent ladder)"
             % (concurrency, FANOUT_HARD_MAX)
         )
+    tier = getattr(brief, "model_tier", "")
+    if tier not in ("",) + MODEL_TIERS:
+        errors.append("model_tier %r not in %r or empty" % (tier, list(MODEL_TIERS)))
     return errors
 
 
@@ -193,6 +202,7 @@ __all__ = [
     "FANOUT_COMPLEX_MAX",
     "FANOUT_HARD_MAX",
     "FANOUT_SIMPLE_MAX",
+    "MODEL_TIERS",
     "MULTI_AGENT_TOKEN_MULTIPLIER",
     "TOKEN_MULTIPLIER_WARNING",
     "SpawnBrief",
