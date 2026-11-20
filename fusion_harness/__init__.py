@@ -50,6 +50,7 @@ from fusion_harness.spawn_protocol import (
     FANOUT_COMPLEX_MAX,
     FANOUT_HARD_MAX,
     FANOUT_SIMPLE_MAX,
+    MODEL_TIERS,
     MULTI_AGENT_TOKEN_MULTIPLIER,
     TOKEN_MULTIPLIER_WARNING,
     SpawnBrief,
@@ -59,6 +60,7 @@ from fusion_harness.spawn_protocol import (
     validate_brief,
 )
 from fusion_harness.team import (
+    VALID_MODEL_TIERS,
     TeamDefError,
     TeamDefinition,
     TeamMember,
@@ -186,6 +188,7 @@ __all__ = [
     "FANOUT_HARD_MAX",
     "MULTI_AGENT_TOKEN_MULTIPLIER",
     "TOKEN_MULTIPLIER_WARNING",
+    "MODEL_TIERS",
     "ArtifactStore",
     "SummaryInjector",
     "WorkerDelivery",
@@ -195,6 +198,7 @@ __all__ = [
     "TeamMember",
     "TeamDefinition",
     "TeamDefError",
+    "VALID_MODEL_TIERS",
     "TeamRuntime",
     "TeamTask",
     "TeamMessage",
