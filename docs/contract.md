@@ -121,6 +121,7 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 
 - `SandboxPolicy.decide(tool, args, risk)` maps the permission engine's risk score/band to a tier: destructive band and score >= threshold route to `sandbox`, explicit `tool_tiers` may map any tool to `blocked`.
 - Fail-closed: `sandbox` tier with no runner wired is denied; `blocked` is denied. Routing happens inside `ToolFunnel.run_tool` between admission and execution — permission decisions themselves are unchanged.
+- **Optional fusion-executor backend (0.29.0, issue #150)**: `FusionExecutorBackend` adapts `fusion_executor.FusionSandboxExecutor` to the SandboxRunner protocol (lazy import — absent package = typed `ExecutorBackendUnavailable`, zero deps on core paths); Git-snapshot rollback via `snapshot()` / `rollback(id)` restores pre-node state. `select_sandbox_runner(preferred, default_runner)` falls back deterministically with a logged warning; other consumers unaffected.
 - Risk band -> default tier mapping (documented per P3-3 acceptance):
 
 | Input | Default tier |
