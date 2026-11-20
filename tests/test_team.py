@@ -208,7 +208,33 @@ class TestMailbox:
     def test_message_type_enum_validated(self):
         with pytest.raises(TeamMessageError):
             TeamMessage(type="gossip", sender="lead", recipient="worker1")
-        assert set(MSG_TYPES) == {"text", "plan_approval", "shutdown_request", "shutdown_response"}
+        assert set(MSG_TYPES) == {
+            "text",
+            "plan_approval",
+            "shutdown_request",
+            "shutdown_response",
+            "destructive_gate",
+        }
+
+    def test_destructive_gate_message_round_trips(self):
+        # Issue #153: destructive_gate cards are inert mailbox data; approval
+        # resolution stays host-side (ApprovalGate/HumanGate queue, harness #66).
+        rt = TeamRuntime(_definition(), state_dir=temp_dir())
+        rt.activate()
+        card = json.dumps({"gate_call_id": "call_deadbeef", "risk": "high"})
+        outcome = rt.send(
+            TeamMessage(
+                type="destructive_gate",
+                sender="lead",
+                recipient="worker1",
+                body=card,
+            )
+        )
+        assert outcome["delivered"] is True
+        inbox = rt.inbox("worker1")
+        assert len(inbox) == 1
+        assert inbox[0]["type"] == "destructive_gate"
+        assert json.loads(inbox[0]["body"])["gate_call_id"] == "call_deadbeef"
 
     def test_broadcast_one_delivery_per_member(self):
         rt = TeamRuntime(_definition(), state_dir=temp_dir())
