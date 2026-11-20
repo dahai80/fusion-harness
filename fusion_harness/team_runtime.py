@@ -76,7 +76,10 @@ _REDACT_VALUE_RE = re.compile(
     r"(?i)\b([\w.-]*(?:secret|token|password|passwd|api[_-]?key|credential)[\w.-]*\s*[=:]\s*)(\S+)"
 )
 
-MSG_TYPES = ("text", "plan_approval", "shutdown_request", "shutdown_response")
+# "destructive_gate" (issue #153) is inert mailbox data: typed approval card
+# routed to the host-side ApprovalGate/HumanGate queue by the consumer. The
+# kernel never resolves it.
+MSG_TYPES = ("text", "plan_approval", "shutdown_request", "shutdown_response", "destructive_gate")
 _TASK_STATUSES = ("todo", "queued", "in_progress", "blocked", "done", "cancelled")
 _TASK_TRANSITIONS = {
     ("todo", "in_progress"),
