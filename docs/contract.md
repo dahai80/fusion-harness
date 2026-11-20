@@ -16,7 +16,6 @@ source_of_truth:
 
 # fusion-harness Kernel Contract
 Version: 1.0 (matches fusion-harness 0.2.0) — the behavior every runtime built on this kernel (Python consumers directly, the TypeScript implementation in fusion-code) must reproduce. Tests in this repo are the executable form of this contract.
-
 ## 1. Funnel Semantics
 
 `ToolFunnel.admit()` is the single entry point for every tool call. Order IS the contract, deny-first:
@@ -68,7 +67,6 @@ Rules:
 | `FUSION_COMPACT_MLX=0` | enabled | Disables LLM summarization (deterministic only) |
 
 Breaking default change in 0.2.0: enforcement flipped from opt-in (`FUSION_FUNNEL_REQUIRE_PERMISSIONS=1` to enable) to opt-out. Operators running headless must set `FUSION_FUNNEL_PERMISSIONS=off` (or `FUSION_FUNNEL_REQUIRE_PERMISSIONS=0`).
-
 ## 6. Segmented Tool Pipeline (0.3.0, issue #5)
 
 `ToolPipeline.run()` is an alternative admission+execution spine to `ToolFunnel.admit()` — segmented with ordering invariants:
@@ -85,7 +83,6 @@ Contract rules:
 - `run(admission_only=True)` stops after stage 3 — verdict covers admission only, dispatch deferred to the consumer.
 - `permission_engine.evaluate()` and `approver.request()` may return awaitables; the pipeline awaits them in place.
 - A policy `deny` short-circuits before the guard stage (guards never observe denied calls).
-
 ## 7. Durable Session Event Log (0.3.0, issue #4)
 
 Structural domain separation: **durable** events are `session_log.SessionEvent`; **live** events are `funnels.LifecycleEvent`. `SessionEventLog.append_event()` raises `TypeError` on anything that is not a `SessionEvent`.
@@ -95,25 +92,20 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 - `replay()` reduces to `SessionState`: `messages`, `completed_tool_calls` (paired by `call_id`), `compactions`, `ended`, `event_count`.
 - Crash mid-tool-call: a `tool_call` with no matching `tool_result`/`tool_error` is reported in `incomplete_tool_calls` — recorded explicitly, never dropped.
 - Unknown event types are preserved on replay (logged, not reduced) — forward compatible.
-
 ## 8. Confirmation Tiers (0.3.0, issue #9)
-
 ## 9. Subagent Runtime (0.8.0, plan P2-1)
 
 - One primitive, not a fleet framework: `SubagentRunner.run(spec, agent_fn, parent_tools, parent_mode)` returns a `SubagentResult` — summary/status/turns/tokens only; child events surface as `SUBAGENT_START`/`SUBAGENT_END` on the lifecycle bus.
 - Child narrowing is monotonic: tool surface = parent ∩ spec allowlist; permission mode = stricter of parent and spec (strictness: bypass < approved < default < plan); budget/turn caps are additive. Violations flag status `capped`, never widen authority.
 - Agent execution is an injected async callable — the kernel owns isolation and accounting, not orchestration ladders.
-
 ## 10. Resumable Checkpoints (0.8.0, plan P2-2)
 
 - `CheckpointStore` (sqlite, WAL, `synchronous=FULL`): `CheckpointState` = messages + budget + permission mode + outbox offset; `save/latest/load/list/prune`.
 - Resume contract: state rebuild reads a checkpoint; committed tool effects are never re-executed — the outbox receipt cache owns effect idempotency (checkpoint restore + redelivery is safe by construction).
-
 ## 11. Skills + Permission Derivation (0.8.0, plan P2-3)
 
 - `parse_skill`: `---` frontmatter (name/description/permissions) + body; missing name, malformed or unknown permission clauses reject at load (fail-closed).
 - `derive_permissions(skill)`: deterministic, engine-shaped node-layer rules; deny clauses always win (strictest-wins); tool names map exact or trailing-`*` globs to anchored regexes.
-
 ## 12. Evaluation Baseline (0.8.0, plan P2-4)
 
 - `bench/compaction_eval.py`: deterministic "future questions" compaction scoring (2610.27301) — no LLM in CI; `bench/baseline.json` records scores with tolerance; regression beyond tolerance fails the suite. Mechanisms without a benchmark delta here do not merge (minimalism gate).
@@ -124,7 +116,6 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 - An explicit rule allow is never escalated; an explicit deny is never downgraded. `bypass` mode ignores the policy.
 - `evaluate(can_confirm=False)` (non-interactive path) fail-closes an ask-tier outcome into a deny with a retry-sequentially reason.
 - The engine decision carries `tier`/`risk`/`confirmation`; `FunnelOutcome.confirmation` exposes it to consumers.
-
 ## 13. Sandbox Execution Tiers (0.9.0, plan P3-3)
 
 - `SandboxPolicy.decide(tool, args, risk)` maps the permission engine's risk score/band to a tier: destructive band and score >= threshold route to `sandbox`, explicit `tool_tiers` may map any tool to `blocked`.
@@ -139,7 +130,6 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 | no band, score below threshold | process |
 
   A sandbox decision with no wired runner degrades to `blocked` (fail-closed, never raw execution).
-
 ## 14. Cache Advisor (0.9.0, plan P3-1)
 
 - `CompactionConfig.cache_advisor` exposes `suggest_keep_rounds(messages) -> int`; the compactor takes `max(config.keep_recent_rounds, suggested)` — advice can only reduce compaction aggressiveness (protect prefix-cache stability), never increase it. Advisor failure logs a warning and uses config.
@@ -149,24 +139,20 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 ## 15. Memory Binding (0.9.0, plan P3-2)
 
 - `MemorySink.store(key, payload, metadata)` / `MemorySource.retrieve(query, limit)`; `MemoryBridge.persist_compaction` and `recall`/`inject_context` (just-in-time, bounded, inserted after the system prefix). Sink/source failures are logged no-ops — memory is an upgrade, never a dependency.
-
 ## 16. MCP Tool Transports (0.7.0 stdio, 0.10.0 HTTP)
 
 - `MCPStdioClient` (line-delimited JSON-RPC over a spawned server process) and `MCPStreamHttpClient` (Streamable-HTTP: JSON-RPC POST, JSON or SSE response, `Mcp-Session-Id` continuity) expose the same surface: `start() -> list_tools() -> call_tool() -> stop()`.
 - `MCPTool.funnel_name` is `mcp__<server>__<tool>`; `MCPToolSource` adapts one server's tools into the funnel registry. Permission rules match the namespaced names like any native tool — an MCP tool gains no new privilege surface, and a denied `tools/call` never reaches the server.
-
 ## 17. Orchestration Primitives (0.10.0)
 
 - `BackgroundPool(runner).spawn(spec, agent_fn) -> Task` + `collect() -> [SubagentResult]`; `ParallelTeam(runner).run(specs, agent_fn) -> [SubagentResult]` fans out concurrently. Both are thin concurrency shapes over `SubagentRunner` — summary-only return, mode narrowing, and budget isolation are inherited, never re-implemented.
 - One member failing never cancels siblings; failures come back as `status="failed"` results. Workflow/DAG orchestration stays consumer-side (fusion-cowork owns the DAG engine); anything needing model judgment stays consumer-side.
 - `ParallelTeam(runner, phase_evaluator=...)` (0.26.0, issue #133): after the member phase, the opt-in evaluator receives the results; a falsy verdict, `{"ok": false, "reason": ...}` dict, or evaluator exception marks surviving member outcomes `blocked` and emits `team_evaluator_block` {verdict, blocked, failed}. Fail-safe — never re-raised; unwired = no model call, no change.
-
 ## 18. Security Intel Loop (0.10.1, issue #24)
 
 - `RiskIntelClient(base_url, ...)` calls fusion-security `POST /api/v1/agent/risk-score` (wire contract: `schemas/agent-risk-score.v1.json` in fusion-security) and pushes the harness's own allow/deny back to `POST /api/v1/agent/decisions` (closed feedback loop).
 - Opt-in: `ToolFunnel(security_intel=...)`. Unwired or unreachable endpoint = exact previous behavior (logged no-op — intel is an upgrade, never a dependency; harness keeps working offline).
 - Hints are **advisory by default** — recorded in the `security_intel` lifecycle event only. `enforce_hints=True` turns an intel `deny` hint into a funnel denial. Harness remains the deny-first executor in all cases; the permission engine's decision is never overridden by intel.
-
 ## 19. Spawn Brief Contract + Effort Tiers (0.11.0, issue #26)
 
 - `SpawnBrief` carries objective / output_format / tool_guidance / boundaries / token_budget / concurrency / depth; `validate_brief()` is a pure function and `brief_from_event()` raises typed `SpawnBriefError` on incomplete payloads — vague briefs are bugs, fail visibly. `depth <= 3` is an orchestration-ladder guard.
@@ -190,6 +176,7 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 - `run_member` enforces orchestration depth: caller depth + team max_depth must stay <= 3 (typed error; closes the T3 re-spawn hole).
 - `save_state`/`load_state` round-trip board + inboxes + lifecycle; `disband` cleans up inboxes per policy. **Zero model calls in any TeamRuntime API** (CI-greppable test).
 - Duplicate-work detection (0.26.0, issue #134): `TeamRuntime(duplicate_threshold=N)` (None = off) folds observed `tool_call` run-stream events into per-phase counters keyed by `tool(sorted-args)` (values truncated to 120 chars). When N distinct members hit the same key: one `team_duplicate_work` {task_id, key, members, count} emission + logged warning; counts exposed via `duplicate_work_stats(task_id)`. Purely observational — detection errors never break the sink.
+- Tier policy (0.27.0, issues #141+#142): `TeamMember.model_tier` / `SpawnBrief.model_tier` vocabulary (`""`/`"cheap"`/`"strong"`); `tier_policy.recommend_tier(step_kind)` maps step kinds deterministically (tool/planning/execution cheap, synthesis/decision/verification strong, unknown `""`). `run_member` resolves precedence explicit member tier > brief hint > policy default into `spec.metadata["model_tier"]` and emits `tier_recommendation` {member, task_id, tier, source, reason} — hint only, consumer resolves the model.
 ## 24. Scoped Permission Engine (0.13.0, issue #34, K1)
 - `ScopedPermission(subject, level, scopes, allowed, expires_at)`: `PermissionLevel` reuses the cowork 5-level names (CONFIRM/MANUAL/AUTO/PLAN/BYPASS — labels; only CONFIRM default and BYPASS short-circuit change behavior). Scopes: `file:` (path-boundary checked — kernel does NOT copy upstream's `file:/a` matches `/ab` raw-prefix quirk), `command:` raw prefix, `url:` slash-boundary prefix, plain string = resource prefix, `*` matches all. `expires_at` is kernel-new (upstream has none).
 - `ScopedPermissionEngine.check(action, resource) -> "allow"|"deny"|"ask"`, deny-rules-first: explicit deny (any level) beats BYPASS and allow; then BYPASS; then allow rules (any level); then high-risk guard delegation; low-risk default allow. Guard: `register_guard(node_class|"*", fn)` — engine owns no guard logic; no guard / guard error / guard deny = fail-closed `deny` + queued approval.

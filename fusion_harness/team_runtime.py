@@ -21,6 +21,7 @@ from fusion_harness.spawn_protocol import SpawnBrief, brief_from_event
 from fusion_harness.subagent import SubagentResult, SubagentRunner, SubagentSpec
 from fusion_harness.team import TeamDefError, TeamDefinition, TeamMember
 from fusion_harness.team_topology import TopologyError, TopologySelector
+from fusion_harness.tier_policy import recommend_tier
 
 logger = logging.getLogger(__name__)
 
@@ -429,18 +430,47 @@ class TeamRuntime:
             )
         budget = min(member.budget_tokens, full_brief.token_budget)
         prompt = self._assemble_member_prompt(member, full_brief.objective)
+        # Issue #142: tier resolution precedence — explicit member tier >
+        # phase-level brief hint > deterministic policy default. The hint
+        # lands in spec.metadata; the consumer resolves it to a model.
+        if member.model_tier:
+            tier, tier_source = member.model_tier, "explicit"
+        elif getattr(full_brief, "model_tier", ""):
+            tier, tier_source = full_brief.model_tier, "brief"
+        else:
+            tier, tier_source = recommend_tier("member_execution"), "policy"
+        metadata = {
+            "task_id": task_id,
+            "output_format": full_brief.output_format,
+            "boundaries": full_brief.boundaries,
+            "team": self.definition.name,
+        }
+        if tier:
+            metadata["model_tier"] = tier
+            self._emit(
+                "tier_recommendation",
+                {
+                    "member": member.name,
+                    "task_id": task_id,
+                    "tier": tier,
+                    "source": tier_source,
+                    "reason": (
+                        "member-level tier hint"
+                        if tier_source == "explicit"
+                        else "phase-level brief tier hint"
+                        if tier_source == "brief"
+                        else "deterministic policy default for member_execution"
+                    ),
+                },
+            )
+            logger.info("tier resolved member=%s tier=%s source=%s", member.name, tier, tier_source)
         spec = SubagentSpec(
             name=member.name,
             prompt=prompt,
             tool_allowlist=list(member.tool_allowlist),
             permission_mode=member.permission_mode,
             budget_tokens=budget,
-            metadata={
-                "task_id": task_id,
-                "output_format": full_brief.output_format,
-                "boundaries": full_brief.boundaries,
-                "team": self.definition.name,
-            },
+            metadata=metadata,
         )
         attempt = self._next_attempt(task_id)
         stream = self._open_run_stream(task_id, attempt)
