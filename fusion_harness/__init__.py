@@ -111,6 +111,11 @@ from fusion_harness.sandbox import (
     SandboxPolicy,
     SandboxRunner,
 )
+from fusion_harness.executor_backend import (
+    ExecutorBackendUnavailable,
+    FusionExecutorBackend,
+    select_sandbox_runner,
+)
 from fusion_harness.skills import (
     Skill,
     SkillError,
@@ -182,6 +187,9 @@ __all__ = [
     "LLMFunnel",
     "ExecutionTier",
     "SandboxPolicy",
+    "FusionExecutorBackend",
+    "ExecutorBackendUnavailable",
+    "select_sandbox_runner",
     "SpawnBrief",
     "SpawnBriefError",
     "validate_brief",
