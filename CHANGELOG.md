@@ -7,14 +7,28 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.29.0
-updated: 2026-11-20
+version: 0.30.0
+updated: 2026-11-21
 owner: "@dahai"
 source_of_truth:
   - CHANGELOG.md
 ---
 
 # Changelog
+
+## 0.30.0 (2026-11-21)
+
+Destructive-gate message type for the team mailbox (issue #153, PR
+#154): `destructive_gate` admitted to the `MSG_TYPES` whitelist as
+inert mailbox data.
+
+### Team mailbox
+
+- `MSG_TYPES` gains `destructive_gate` — a typed approval card the
+  consumer routes to the host-side ApprovalGate/HumanGate queue. The
+  kernel never resolves it; approval resolution stays host-side.
+- Message-type validation semantics unchanged: the enum is checked,
+  not the semantics. Pre-extension inbox records load unchanged.
 
 ## 0.29.0 (2026-11-20)
 
