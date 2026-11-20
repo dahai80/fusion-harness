@@ -13,6 +13,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from fusion_harness.untrusted import INJECTION_PATTERNS
+
 logger = logging.getLogger(__name__)
 
 PERMISSIONS_FILE = Path.home() / ".fusion-agent-studio" / "permissions.json"
@@ -502,6 +504,21 @@ class PermissionEngine:
                     "deny",
                     rule_source="content_scan",
                     reason=f"dangerous pattern matched: {pattern}",
+                )
+
+        # Issue #147 (S2): deterministic injection-pattern heuristics extend
+        # the content_scan rule source — imperative instruction patterns in
+        # call args are denied like any dangerous content. Pure matching.
+        for label, pattern in INJECTION_PATTERNS.items():
+            if guard_search(pattern, blob, re.IGNORECASE):
+                logger.warning(
+                    "content scan blocked tool=%s injection_pattern=%s", tool_name, label
+                )
+                self._stats["denies"] += 1
+                return PermissionDecision(
+                    "deny",
+                    rule_source="content_scan",
+                    reason=f"injection pattern matched: {label}",
                 )
 
         pending_ask: tuple[str, PermissionRule] | None = None

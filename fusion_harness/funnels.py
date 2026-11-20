@@ -29,6 +29,7 @@ from enum import Enum
 from typing import Any
 
 from fusion_harness.destructive_gate import ApprovalGate
+from fusion_harness.untrusted import scan_untrusted
 from fusion_harness.permissions import (
     PermissionDecision,
     PermissionEngine,
@@ -238,6 +239,10 @@ class ToolFunnel:
         # Optional loop detector (issue #95): repetition over tool-call
         # args is a budget leak — observed once the call is admitted.
         self.loop_detector = None
+        # Issue #147 (S3): escalation invariant state. Set when a tool
+        # result contains injection patterns; destructive calls made after
+        # this flag is set need approval — including bypass mode.
+        self.untrusted_seen = False
         self._executions = 0
 
     def set_budget_ref(self, budget_ref) -> None:
@@ -388,6 +393,32 @@ class ToolFunnel:
                         decision_log=log,
                         safety_result=safety_result,
                     )
+
+        # Stage 2c-esc (issue #147, S3): escalation invariant. A destructive
+        # call issued AFTER untrusted content entered the session is forced
+        # through an approval gate regardless of permission mode — including
+        # bypass. No gate wired -> deny with a typed reason; the invariant
+        # never widens a deny, only adds one.
+        if self.untrusted_seen and self.approval_gate is None:
+            destructive, destructive_reason = ApprovalGate.classify(tool_name, args)
+            if destructive:
+                reason = (
+                    "escalation invariant: destructive call (%s) after untrusted "
+                    "content requires approval but no approval gate is wired"
+                    % (destructive_reason or "policy table")
+                )
+                _mark("escalation", "deny", reason)
+                logger.warning(
+                    "escalation invariant denied tool=%s mode_context=untrusted_seen",
+                    tool_name,
+                )
+                self._emit(
+                    "capability",
+                    "escalation_invariant",
+                    {"tool": tool_name, "reason": reason},
+                    ctx,
+                )
+                return self._deny(ctx, tool_name, args, "escalation", log, reason)
 
         # Stage 2c: host-owned destructive approval (issue #73). A tool-
         # server-side confirmation never substitutes: destructive calls
@@ -585,6 +616,26 @@ class ToolFunnel:
         result_str = str(result)
         is_error = result_str.startswith("Error:")
         self._executions += 1
+        # Issue #147 (S2): tool results are untrusted-origin content by
+        # definition — scan deterministically, flag exposure for the
+        # escalation invariant, and label the lifecycle payload.
+        matches = scan_untrusted(result_str)
+        if matches:
+            self.untrusted_seen = True
+            logger.warning(
+                "untrusted content in tool result tool=%s matches=%s", tool_name, matches
+            )
+        self._emit(
+            "capability",
+            "tool_result_scan",
+            {
+                "tool": tool_name,
+                "origin": "tool_result",
+                "untrusted": bool(matches),
+                "matches": matches,
+            },
+            ctx,
+        )
         # Issue #97: tag the result at birth (O(1) metadata sidecar) and
         # record bounded snippets for downstream taint propagation.
         if self.provenance_tracker is not None:
@@ -616,6 +667,7 @@ class ToolFunnel:
                 "tool": tool_name,
                 "node": node_label,
                 "is_error": is_error,
+                "origin": "tool_result",
                 "result_preview": (result or "")[:200],
             },
             ctx,
