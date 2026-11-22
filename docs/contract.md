@@ -43,6 +43,7 @@ Rules:
 - Every decision is metered (`stats()`).
 ## 3. Hook Engine
 - Event list: `PRE_TOOL_USE`, `POST_TOOL_USE`, `POST_TOOL_USE_FAILURE`, `SESSION_START`, `SESSION_END`, `STOP`, `ERROR`, `CHECKPOINT`, `TEAM_MESSAGE`, `PERSONA_RELOADED`, `COMPACT_BEFORE` (compactor).
+- **Terminal-row invariant** (`TerminalRowTracker` + `wire_terminal_invariant`): at turn end (STOP/SESSION_END/ERROR hook chain), every transient row still open is force-closed and annotated (`forced=True`, `forced_outcome=outcome`) — a persisted timeline never dangles in-flight rows; violations emit `terminal_row_violation` on the bus, observational (never gates).
 - **Fail-closed events**: `PRE_TOOL_USE`, `POST_TOOL_USE`, `TOOL_DENY`. On these, a hook error OR the per-fire budget (`FUSION_HOOK_MAX_MS`, default 50ms) running out with hooks still unrun → `decision=block`. Skipping a security hook equals allowing the call — never silent.
 - Non-security events swallow hook errors (`decision=approve`).
 - Two hook types: `callback` (Python callable; `@hook` decorator registers into a module-level registry flushed at engine construction) and `command` (subprocess; **disabled unless `FUSION_HOOKS_ALLOW_COMMAND=1` — disabled command hooks return `block` on fail-closed events, not a no-op).
