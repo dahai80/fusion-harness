@@ -7,7 +7,7 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.30.0
+version: 0.31.0
 updated: 2026-11-21
 owner: "@dahai"
 source_of_truth:
@@ -15,6 +15,48 @@ source_of_truth:
 ---
 
 # Changelog
+
+## 0.31.0 (2026-11-22)
+
+Six Paseo-parity + TokenEconomizer-parity kernel features (issues
+#156/#157/#158/#159/#160/#164).
+
+### Lifecycle hardening
+
+- **Cancellation idempotency** (#156): `CancellationRegistry` — cancel
+  tokens carry turn identity; stale tokens are no-ops that never settle
+  new work; repeat cancel is idempotent; `mark_ambiguous` blocks new
+  work until explicit `rebind()` (no silent split-brain).
+  `TURN_INTERRUPT`/`TURN_REBIND` hook events added.
+- **Terminal-row invariant** (#157): `TerminalRowTracker` +
+  `wire_terminal_invariant` — at turn end (STOP/SESSION_END/ERROR) every
+  open transient row is force-closed and annotated; the persisted
+  timeline never dangles in-flight rows.
+
+### Structured HITL + provider seam
+
+- **Structured permission requests** (#159): `PermissionRequest` /
+  `PermissionResponse` / `resolve_request` — kind (tool/plan/question/
+  mode/other), per-action intents (implement/implement_resume/dismiss),
+  `follow_up_prompt` honored only for implement intents (plan-approval-
+  to-implementation). allow/deny stays the degenerate case.
+- **Provider adapter contract K1** (#158): `AgentClient`/`AgentSession`
+  Protocols, normalized `ToolCallDetail` + `AgentStreamEvent` (18
+  variants), `AgentCapabilityFlags` dual-channel gating; compaction
+  stays harness-owned.
+
+### Team comms + experience layer
+
+- **Member comms mechanisms** (#160): system envelopes with
+  anti-spoofing (`sanitize_human_prompt` quotes forged envelope lines),
+  durable JSON-persisted finish subscriptions (supersession, exponential
+  retry, restart recovery, ack-on-delivery), member detach/cascade
+  lifecycle.
+- **Cross-session experience layer** (#164): `LoopGuard` +
+  `SpiralState` (deterministic loop guard — envelope threshold from
+  successful-turn percentiles, redirect-never-abort, fail-open) and
+  `ToolPruner` (evidence-based tool-prune proposals, protected tools,
+  3x notebook streaks, reversible, decide-vs-apply split).
 
 ## 0.30.0 (2026-11-21)
 
