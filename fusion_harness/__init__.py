@@ -15,6 +15,15 @@ from fusion_harness.cancellation import (
     CancellationRegistry,
     TurnStateError,
 )
+from fusion_harness.member_comms import (
+    FinishSubscriptionStore,
+    archive_cascade,
+    detach_member,
+    envelope_for,
+    extract_envelopes,
+    sanitize_human_prompt,
+    wrap_envelope,
+)
 from fusion_harness.permission_request import (
     ACTION_INTENTS,
     REQUEST_KINDS,
@@ -191,6 +200,13 @@ __all__ = [
     "RequestAction",
     "ResolvedRequest",
     "resolve_request",
+    "FinishSubscriptionStore",
+    "archive_cascade",
+    "detach_member",
+    "envelope_for",
+    "extract_envelopes",
+    "sanitize_human_prompt",
+    "wrap_envelope",
     "CompactionConfig",
     "Compactor",
     "ArtifactQuarantine",
