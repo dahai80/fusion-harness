@@ -15,6 +15,15 @@ from fusion_harness.cancellation import (
     CancellationRegistry,
     TurnStateError,
 )
+from fusion_harness.experience import (
+    NOTEBOOK_MULTIPLIER,
+    GuardVerdict,
+    LoopGuard,
+    PruneProposal,
+    SpiralState,
+    ToolPruner,
+    is_notebook_tool,
+)
 from fusion_harness.member_comms import (
     FinishSubscriptionStore,
     archive_cascade,
@@ -211,6 +220,13 @@ __all__ = [
     "RequestAction",
     "ResolvedRequest",
     "resolve_request",
+    "NOTEBOOK_MULTIPLIER",
+    "GuardVerdict",
+    "LoopGuard",
+    "PruneProposal",
+    "SpiralState",
+    "ToolPruner",
+    "is_notebook_tool",
     "FinishSubscriptionStore",
     "archive_cascade",
     "detach_member",

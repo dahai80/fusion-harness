@@ -13,7 +13,6 @@ owner: "@dahai"
 source_of_truth:
   - docs/contract.md
 ---
-
 # fusion-harness Kernel Contract
 Version: 1.0 (matches fusion-harness 0.2.0) — the behavior every runtime built on this kernel (Python consumers directly, the TypeScript implementation in fusion-code) must reproduce. Tests in this repo are the executable form of this contract.
 ## 1. Funnel Semantics
@@ -113,7 +112,6 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 ## 12. Evaluation Baseline (0.8.0, plan P2-4)
 
 - `bench/compaction_eval.py`: deterministic "future questions" compaction scoring (2610.27301) — no LLM in CI; `bench/baseline.json` records scores with tolerance; regression beyond tolerance fails the suite. Mechanisms without a benchmark delta here do not merge (minimalism gate).
-
 `ConfirmationPolicy(tier, risk_threshold, tool_overrides)` with tiers `always` / `never` / `risk` is evaluated **inside** `PermissionEngine` — one decision point, consumers must not stack local policy layers on top.
 
 - Deterministic risk bands (never LLM-judged): destructive 0.9 > network 0.6 > write 0.3 > readonly 0.0 (`score_tool_risk()`).
@@ -126,7 +124,6 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 - Fail-closed: `sandbox` tier with no runner wired is denied; `blocked` is denied. Routing happens inside `ToolFunnel.run_tool` between admission and execution — permission decisions themselves are unchanged.
 - **Optional fusion-executor backend (0.29.0, issue #150)**: `FusionExecutorBackend` adapts `fusion_executor.FusionSandboxExecutor` to the SandboxRunner protocol (lazy import — absent package = typed `ExecutorBackendUnavailable`, zero deps on core paths); Git-snapshot rollback via `snapshot()` / `rollback(id)` restores pre-node state. `select_sandbox_runner(preferred, default_runner)` falls back deterministically with a logged warning; other consumers unaffected.
 - Risk band -> default tier mapping (documented per P3-3 acceptance):
-
 | Input | Default tier |
 |---|---|
 | `tool_tiers[tool]` set | as mapped (process / sandbox / blocked) — wins first |
@@ -138,7 +135,6 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 ## 14. Cache Advisor (0.9.0, plan P3-1)
 
 - `CompactionConfig.cache_advisor` exposes `suggest_keep_rounds(messages) -> int`; the compactor takes `max(config.keep_recent_rounds, suggested)` — advice can only reduce compaction aggressiveness (protect prefix-cache stability), never increase it. Advisor failure logs a warning and uses config.
-
 - **Threshold-triggered compaction (issue #122)**: `CompactionConfig.trigger_ratio` (default None = consumer-invoked, zero behavior change) derives a single auto-trigger policy at `int(context_window * trigger_ratio)` — `trigger_threshold()` returns None while off, `should_auto_compact(tokens)` is the one consult for LLMFunnel/sidecar; ratios outside (0.0, 1.0] raise `ValueError` (loud), buffer-based `should_compact` levels are unchanged. Industry source: Anthropic effective-context-engineering (~80-92% of window).
 - **Post-compaction validation (issue #131)**: optional `CompactionConfig.validator` callable runs after compaction with `(compacted_messages, original_token_count)`; bool or `(bool, verdict)` return. Failure (exception or falsy) logs a warning and emits `compaction_validated` {ok, verdict, level, before_tokens, after_tokens} on the LifecycleBus — observational only, never gates or reverts; unwired validator = zero behavior change (no event).
 ## 15. Memory Binding (0.9.0, plan P3-2)
@@ -255,7 +251,6 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 - **Topology bank as data + per-step selector (standalone, pre-wiring)**: `TOPOLOGY_BANK` holds declarative `TopologySpec(name, edges_fn(member_roles) -> edge list, max_fanout)` candidates — `chain`/`star`/`mesh`/`role_filtered`/`lead_only`; adding a topology is adding data, no engine changes. `TopologySelector.select(roles, remaining_budget)` filters candidates BEFORE scoring (hard constraint: estimated step spend over remaining funnel budget, or fanout over `max_fanout`, drops the candidate), then scores `fit_weight * role_fit - cost_weight * est_token_cost` where role_fit is the fraction of edges connecting complementary roles (host-supplied `role_complements` map; empty map = full fit) and est_token_cost sums last-observed message size per edge endpoint (`observe(member, tokens)`, `unseen_message_tokens` default 64). Tie-break prefers the previous step's topology (hysteresis); every switch logs. The selector proposes only — every send still crosses the funnel budget gate (funnel disposes). `TopologyTelemetry.record_step` persists `{step, topology, edge_sends: {edge: tokens}, skipped_edges}` per step for failure attribution (#93). Unknown-shape input raises `TopologyError` (loud). Wiring (opt-in, issue #101 phase 2): `TeamRuntime(enable_topology_scheduling=...)` or `FUSION_TEAM_TOPOLOGY=1` — the selector proposes the per-step send set, the wired `budget_ref` disposes each send (denied sends land in `skipped_edges`), a selector fault falls back to a loud full broadcast; default off = byte-identical broadcast.
 ## 39. Memory Consolidation Op Set (issue #100)
 - **ADD/UPDATE/DELETE/NOOP at the write gate (opt-in)**: `MemoryConsolidator` decides each candidate against retrieval neighbors (`decide`, token-containment scoring): near-duplicate (>= 0.92) merges into the neighbor (UPDATE), same-subject conflicting value supersedes with a tombstone, retraction keywords + overlap tombstone the target (DELETE — metadata, never deletion; tombstoned memories are not retrievable via `is_retrievable`), overlap < 0.5 ADDs, the gray zone NOOPs (do not write, log + `memory_consolidation` event). A-MEM-style retroactive refresh bounded to k=3 live neighbors, one hop. `MemoryBridge(sink, source, quarantine, bus, consolidator)` routes clean compaction summaries through the gate when wired (quarantined writes keep the #75 path); unwired = unchanged behavior. Regression axis: `evals/memory_bench.py` scores four competencies (accurate retrieval, test-time learning, long-range linkage, selective forgetting — over-forgetting is a gate failure) with `assert_memory_gate`; seeded over-forgetting consolidator must fail it.
-
 <<<<<<< HEAD
 ## 41. Member Comms Mechanisms (issue #160)
 - **Envelopes + anti-spoofing** (`member_comms`): member traffic travels as `<system kind=... source-agent-id=... message-id=...>` envelopes (`wrap_envelope`); `extract_envelopes` parses only strict unquoted blocks; `sanitize_human_prompt` quotes any envelope-shaped line found in HUMAN-typed prompts (`> ` prefix) so forged system traffic cannot survive provider history replay.
@@ -265,3 +260,6 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 ## 40. Provider Adapter Contract K1 (issue #158)
 - **Adapter seam** (`provider_adapter`): `AgentClient` / `AgentSession` stdlib `Protocol` boundary — provider manages auth, sessions expose an opaque resume handle (`new_session` / `resume_session(session_id, handle)`). Normalized `ToolCallDetail` (auto-mapped `kind` via `normalize_tool_kind`: shell/read/edit/write/search/web/mcp/other, unknown → `other`, never raises) and `AgentStreamEvent` (18-variant contract set, `EVENT_VARIANTS`; unknown variant raises `AdapterEventError`). `AgentCapabilityFlags` dual-channel gating: `to_features()` for server_info features, `from_features()` treats absent as False — no fallback paths inside features. `context_compaction` is harness-owned (budget funnel / compaction stays ours — adapters never touch it).
 >>>>>>> origin/master
+## 42. Cross-Session Experience Layer (issue #164)
+- **Loop-guard hook** (`LoopGuard` + `SpiralState`): deterministic-first, per-call fold of edits-per-file / files edited / repeat-failure signatures; envelope threshold = percentile of self-ended turns with no failed verification after the last edit (a turn's own outcome gates only later turns; below `min_turn_samples` the threshold is 0 = off). Verdicts: `pass` / `redirect` (first stuck — inject note, fresh segment) / `notice` (later stuck — surface to human); **never abort**. Fail-open on internal errors (cost telemetry, not permission class). Optional model judge sits behind the heuristic; each judge call emits `loop_guard_judge` so its cost lands in funnel telemetry.
+- **Evidence-based tool pruning** (`ToolPruner`): a loaded tool unused over `min_prompts` prompts in >= `min_sessions` sessions, or across >= `idle_sessions` sessions of any length, is PROPOSED (`PruneProposal` with evidence); one use resets the streak; protected work-surface tools never proposed; notebook-class tools need `NOTEBOOK_MULTIPLIER` (3x) longer prompt/idle streaks. Decide-vs-apply split: this module proposes and `restore()`s — writing decisions into consumer settings is the consumer's job. All actions reversible.
