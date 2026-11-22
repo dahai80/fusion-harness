@@ -42,7 +42,8 @@ Rules:
 - An un-armed engine (no rules, default mode) passes through with a loud warning, unless `FUSION_PERMISSION_PASSTHROUGH=0` turns passthrough into `ask`.
 - Every decision is metered (`stats()`).
 ## 3. Hook Engine
-- Event list: `PRE_TOOL_USE`, `POST_TOOL_USE`, `POST_TOOL_USE_FAILURE`, `SESSION_START`, `SESSION_END`, `STOP`, `ERROR`, `CHECKPOINT`, `TEAM_MESSAGE`, `PERSONA_RELOADED`, `COMPACT_BEFORE` (compactor).
+- Event list: `PRE_TOOL_USE`, `POST_TOOL_USE`, `POST_TOOL_USE_FAILURE`, `SESSION_START`, `SESSION_END`, `STOP`, `ERROR`, `CHECKPOINT`, `TEAM_MESSAGE`, `PERSONA_RELOADED`, `COMPACT_BEFORE` (compactor), `TURN_INTERRUPT`/`TURN_REBIND` (cancellation).
+- **Cancellation idempotency** (`CancellationRegistry`): cancel tokens carry turn identity — a stale token (its turn is no longer the session's current turn) is a no-op that never settles new work; repeat cancel of the same token is idempotent; after `mark_ambiguous`, `begin_turn` raises `TurnStateError` until an explicit `rebind()` (no silent split-brain). Emits `turn_cancelled`/`turn_ambiguous`/`turn_rebind` on the bus.
 - **Terminal-row invariant** (`TerminalRowTracker` + `wire_terminal_invariant`): at turn end (STOP/SESSION_END/ERROR hook chain), every transient row still open is force-closed and annotated (`forced=True`, `forced_outcome=outcome`) — a persisted timeline never dangles in-flight rows; violations emit `terminal_row_violation` on the bus, observational (never gates).
 - **Fail-closed events**: `PRE_TOOL_USE`, `POST_TOOL_USE`, `TOOL_DENY`. On these, a hook error OR the per-fire budget (`FUSION_HOOK_MAX_MS`, default 50ms) running out with hooks still unrun → `decision=block`. Skipping a security hook equals allowing the call — never silent.
 - Non-security events swallow hook errors (`decision=approve`).

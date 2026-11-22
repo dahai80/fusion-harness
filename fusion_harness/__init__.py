@@ -10,6 +10,11 @@ from fusion_harness.artifact_scan import (
     scan_artifact,
     stamp_untrusted,
 )
+from fusion_harness.cancellation import (
+    CancelToken,
+    CancellationRegistry,
+    TurnStateError,
+)
 from fusion_harness.checkpoint import (
     CheckpointState,
     CheckpointStore,
@@ -165,6 +170,9 @@ __all__ = [
     "TERMINAL_EVENTS",
     "TerminalRowTracker",
     "wire_terminal_invariant",
+    "CancelToken",
+    "CancellationRegistry",
+    "TurnStateError",
     "CompactionConfig",
     "Compactor",
     "ArtifactQuarantine",
