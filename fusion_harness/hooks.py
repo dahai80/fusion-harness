@@ -66,6 +66,10 @@ class HookEvent(str, enum.Enum):
     TEAM_MESSAGE = "TEAM_MESSAGE"
     # N16 #390: persona file hot reload.
     PERSONA_RELOADED = "PERSONA_RELOADED"
+    # #156: cancellation idempotency — fired by CancellationRegistry consumers
+    # that own an event loop (registry itself stays sync, emits on the bus).
+    TURN_INTERRUPT = "TURN_INTERRUPT"
+    TURN_REBIND = "TURN_REBIND"
 
 
 @dataclass
