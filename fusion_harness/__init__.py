@@ -43,6 +43,17 @@ from fusion_harness.terminal_rows import (
     TerminalRowTracker,
     wire_terminal_invariant,
 )
+from fusion_harness.provider_adapter import (
+    EVENT_VARIANTS,
+    TOOL_KINDS,
+    AdapterEventError,
+    AgentCapabilityFlags,
+    AgentClient,
+    AgentSession,
+    AgentStreamEvent,
+    ToolCallDetail,
+    normalize_tool_kind,
+)
 from fusion_harness.destructive_gate import ApprovalGate
 from fusion_harness.untrusted import INJECTION_PATTERNS, scan_untrusted
 from fusion_harness.compactor import (
@@ -207,6 +218,15 @@ __all__ = [
     "extract_envelopes",
     "sanitize_human_prompt",
     "wrap_envelope",
+    "EVENT_VARIANTS",
+    "TOOL_KINDS",
+    "AdapterEventError",
+    "AgentCapabilityFlags",
+    "AgentClient",
+    "AgentSession",
+    "AgentStreamEvent",
+    "ToolCallDetail",
+    "normalize_tool_kind",
     "CompactionConfig",
     "Compactor",
     "ArtifactQuarantine",
