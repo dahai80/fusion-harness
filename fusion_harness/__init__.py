@@ -19,6 +19,11 @@ from fusion_harness.checkpoint import (
     CheckpointState,
     CheckpointStore,
 )
+from fusion_harness.terminal_rows import (
+    TERMINAL_EVENTS,
+    TerminalRowTracker,
+    wire_terminal_invariant,
+)
 from fusion_harness.destructive_gate import ApprovalGate
 from fusion_harness.untrusted import INJECTION_PATTERNS, scan_untrusted
 from fusion_harness.compactor import (
@@ -162,6 +167,9 @@ KERNEL_VERSION = "0.30.0"
 
 __all__ = [
     "KERNEL_VERSION",
+    "TERMINAL_EVENTS",
+    "TerminalRowTracker",
+    "wire_terminal_invariant",
     "CancelToken",
     "CancellationRegistry",
     "TurnStateError",
