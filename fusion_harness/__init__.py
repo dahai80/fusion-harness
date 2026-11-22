@@ -15,6 +15,16 @@ from fusion_harness.cancellation import (
     CancellationRegistry,
     TurnStateError,
 )
+from fusion_harness.permission_request import (
+    ACTION_INTENTS,
+    REQUEST_KINDS,
+    PermissionRequest,
+    PermissionRequestError,
+    PermissionResponse,
+    RequestAction,
+    ResolvedRequest,
+    resolve_request,
+)
 from fusion_harness.checkpoint import (
     CheckpointState,
     CheckpointStore,
@@ -165,6 +175,14 @@ __all__ = [
     "CancelToken",
     "CancellationRegistry",
     "TurnStateError",
+    "ACTION_INTENTS",
+    "REQUEST_KINDS",
+    "PermissionRequest",
+    "PermissionRequestError",
+    "PermissionResponse",
+    "RequestAction",
+    "ResolvedRequest",
+    "resolve_request",
     "CompactionConfig",
     "Compactor",
     "ArtifactQuarantine",
