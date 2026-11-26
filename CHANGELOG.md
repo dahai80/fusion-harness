@@ -7,7 +7,7 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.31.0
+version: 0.31.1
 updated: 2026-11-21
 owner: "@dahai"
 source_of_truth:
@@ -15,6 +15,19 @@ source_of_truth:
 ---
 
 # Changelog
+
+## 0.31.1 (2026-11-26)
+
+Docs release (issues #169, #170, PR #171).
+
+### Documentation
+
+- **README_CN.md added** (#170, #171): faithful Chinese mirror of
+  README.md (structure, commands, issue references preserved); bilingual
+  docs convention now holds — keep both in sync on future changes.
+- Audit 2026-11-26 residual closed (#169): the "8 TODO markers" finding
+  was a false positive — the 3 `TODO` occurrences in compactor.py are
+  the retention-list TODO-extraction feature strings, not code debt.
 
 ## 0.31.0 (2026-11-22)
 
