@@ -16,7 +16,6 @@ source_of_truth:
 # fusion-harness Kernel Contract
 Version: 1.0 (matches fusion-harness 0.2.0) — the behavior every runtime built on this kernel (Python consumers directly, the TypeScript implementation in fusion-code) must reproduce. Tests in this repo are the executable form of this contract.
 ## 1. Funnel Semantics
-
 `ToolFunnel.admit()` is the single entry point for every tool call. Order IS the contract, deny-first:
 
 1. **lifecycle** `tool.before` emitted
@@ -71,7 +70,6 @@ Rules:
 
 Breaking default change in 0.2.0: enforcement flipped from opt-in (`FUSION_FUNNEL_REQUIRE_PERMISSIONS=1` to enable) to opt-out. Operators running headless must set `FUSION_FUNNEL_PERMISSIONS=off` (or `FUSION_FUNNEL_REQUIRE_PERMISSIONS=0`).
 ## 6. Segmented Tool Pipeline (0.3.0, issue #5)
-
 `ToolPipeline.run()` is an alternative admission+execution spine to `ToolFunnel.admit()` — segmented with ordering invariants:
 
 1. **pre-execute** waterfall: `pre_hook` (rewrite args / raise `PipelineBlocked`), then `permission_engine.evaluate` (deny short-circuits before guards; ask sets approval-required)
@@ -87,7 +85,6 @@ Contract rules:
 - `permission_engine.evaluate()` and `approver.request()` may return awaitables; the pipeline awaits them in place.
 - A policy `deny` short-circuits before the guard stage (guards never observe denied calls).
 ## 7. Durable Session Event Log (0.3.0, issue #4)
-
 Structural domain separation: **durable** events are `session_log.SessionEvent`; **live** events are `funnels.LifecycleEvent`. `SessionEventLog.append_event()` raises `TypeError` on anything that is not a `SessionEvent`.
 
 - Append-only: monotonically increasing `seq`; non-monotonic append raises `LogSchemaError`. JSONL persistence opens in append mode and fsyncs per event.
@@ -97,7 +94,6 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 - Unknown event types are preserved on replay (logged, not reduced) — forward compatible.
 ## 8. Confirmation Tiers (0.3.0, issue #9)
 ## 9. Subagent Runtime (0.8.0, plan P2-1)
-
 - One primitive, not a fleet framework: `SubagentRunner.run(spec, agent_fn, parent_tools, parent_mode)` returns a `SubagentResult` — summary/status/turns/tokens only; child events surface as `SUBAGENT_START`/`SUBAGENT_END` on the lifecycle bus.
 - Child narrowing is monotonic: tool surface = parent ∩ spec allowlist; permission mode = stricter of parent and spec (strictness: bypass < approved < default < plan); budget/turn caps are additive. Violations flag status `capped`, never widen authority.
 - Agent execution is an injected async callable — the kernel owns isolation and accounting, not orchestration ladders.
@@ -263,3 +259,7 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 ## 42. Cross-Session Experience Layer (issue #164)
 - **Loop-guard hook** (`LoopGuard` + `SpiralState`): deterministic-first, per-call fold of edits-per-file / files edited / repeat-failure signatures; envelope threshold = percentile of self-ended turns with no failed verification after the last edit (a turn's own outcome gates only later turns; below `min_turn_samples` the threshold is 0 = off). Verdicts: `pass` / `redirect` (first stuck — inject note, fresh segment) / `notice` (later stuck — surface to human); **never abort**. Fail-open on internal errors (cost telemetry, not permission class). Optional model judge sits behind the heuristic; each judge call emits `loop_guard_judge` so its cost lands in funnel telemetry.
 - **Evidence-based tool pruning** (`ToolPruner`): a loaded tool unused over `min_prompts` prompts in >= `min_sessions` sessions, or across >= `idle_sessions` sessions of any length, is PROPOSED (`PruneProposal` with evidence); one use resets the streak; protected work-surface tools never proposed; notebook-class tools need `NOTEBOOK_MULTIPLIER` (3x) longer prompt/idle streaks. Decide-vs-apply split: this module proposes and `restore()`s — writing decisions into consumer settings is the consumer's job. All actions reversible.
+## 43. Skill Retrieval + Prompt Injection (issue #174)
+- **Consume, don't fork** (`skill_retrieval`): `SkillRetriever` lazy-imports `fusion_trainer.skills` — `load_skill_library` (fail-visible reader: missing path raises `SkillRetrievalError`; malformed lines skipped loudly upstream) and `render_skill_block` (single-sourced block format with success_count/verifier citations, budgets `max_skills`/`max_chars` explicit). Kernel stays pip-dependency-free: trainer is an optional runtime dep, missing = typed error.
+- **Deterministic retrieval**: exact/normalized task_id match first, then tool-name overlap with the declared toolset; each pool ordered by success_count desc, deduped, capped at `max_skills`. `inject()` returns the rendered block ("" when nothing matches — never pads the prompt); injection failures log + emit `skill_injection_failed` and return "" (telemetry-class fail-open, loop never dies).
+- **Evolution feedback loop**: `used_skills_entry(skill_ids)` builds the outcome-sidecar record (`{"used_skills": [...]}`) the consumer merges into a successful run's outcome so the next mining round strengthens those skills; injections emit `skill_block_injected` {task_id, skill_ids}.
