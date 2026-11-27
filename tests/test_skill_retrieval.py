@@ -1,5 +1,8 @@
 """Tests for skill retrieval + prompt injection (#174)."""
 
+import sys
+import types
+
 import pytest
 
 from fusion_harness import (
@@ -8,6 +11,25 @@ from fusion_harness import (
     SkillRetriever,
     used_skills_entry,
 )
+
+
+def _install_fake_trainer(monkeypatch):
+    # CI has no fusion_trainer installed; the harness consumes its contract
+    # lazily, so stub the module to keep render tests offline-deterministic
+    mod = types.ModuleType("fusion_trainer")
+    skills = types.ModuleType("fusion_trainer.skills")
+
+    def render_skill_block(skills_list, max_skills=5, max_chars=2000):
+        parts = [
+            "%s (used %dx)" % (s["skill_id"], s.get("success_count", 0))
+            for s in skills_list[:max_skills]
+        ]
+        return "Proven procedural skills: " + ", ".join(parts)
+
+    skills.render_skill_block = render_skill_block
+    mod.skills = skills
+    monkeypatch.setitem(sys.modules, "fusion_trainer", mod)
+    monkeypatch.setitem(sys.modules, "fusion_trainer.skills", skills)
 
 
 def _library():
@@ -84,7 +106,8 @@ def test_retrieve_caps_at_max_skills():
     assert len(picked) == 1
 
 
-def test_render_block_single_sourced_format():
+def test_render_block_single_sourced_format(monkeypatch):
+    _install_fake_trainer(monkeypatch)
     retriever = SkillRetriever(library=_library())
     block = retriever.render_block(retriever.retrieve(task_id="sheet-9"))
     assert block.startswith("Proven procedural skills")
@@ -118,7 +141,8 @@ def test_injection_failure_fails_visible_returns_empty_block():
     assert retriever.inject(task_id="x") == ""
 
 
-def test_inject_emits_event_with_skill_ids():
+def test_inject_emits_event_with_skill_ids(monkeypatch):
+    _install_fake_trainer(monkeypatch)
     seen = []
     bus = LifecycleBus()
     orig = bus.emit
