@@ -7,14 +7,26 @@ doc_type: changelog
 title: { zh: "变更日志", en: "Changelog" }
 audience: developer
 status: draft
-version: 0.31.1
-updated: 2026-11-21
+version: 0.33.0
+updated: 2026-11-27
 owner: "@dahai"
 source_of_truth:
   - CHANGELOG.md
 ---
 
 # Changelog
+
+## 0.33.0 (2026-11-27)
+
+### Added
+
+- Skill retrieval + prompt injection consuming the fusion-trainer skill-library contract (#174, #175): deterministic retrieval (task_id match first, then tool overlap, success_count-ordered), block rendering single-sourced in `fusion_trainer.skills` (lazy import, typed `SkillRetrievalError`), telemetry fail-open `inject()`, `used_skills_entry` outcome sidecar for the mining feedback loop. See `docs/contract.md` #43.
+
+## 0.32.0 (2026-11-26)
+
+### Added
+
+- `TeamMember.privacy` constraint - per-member privacy routing carried in spec metadata (#173). Kernel transports the constraint; consumers own enforcement.
 
 ## 0.31.1 (2026-11-26)
 
