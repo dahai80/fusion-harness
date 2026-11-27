@@ -1,4 +1,11 @@
-"""Tests for skill retrieval + prompt injection (#174)."""
+"""Tests for skill retrieval + prompt injection (#174).
+
+The fusion-trainer contract is consumed, not forked. CI installs this
+repo standalone (no fusion_trainer), so retrieval-logic tests run
+against a fake `fusion_trainer.skills` module implementing the same
+contract shape; one conformance test against the real module is guarded
+by importorskip and runs wherever the shared venv has fusion-trainer.
+"""
 
 import sys
 import types
@@ -13,23 +20,33 @@ from fusion_harness import (
 )
 
 
-def _install_fake_trainer(monkeypatch):
-    # CI has no fusion_trainer installed; the harness consumes its contract
-    # lazily, so stub the module to keep render tests offline-deterministic
-    mod = types.ModuleType("fusion_trainer")
-    skills = types.ModuleType("fusion_trainer.skills")
+BLOCK_HEADER = "Proven procedural skills (successfully used before — follow when applicable):"
 
-    def render_skill_block(skills_list, max_skills=5, max_chars=2000):
-        parts = [
-            "%s (used %dx)" % (s["skill_id"], s.get("success_count", 0))
-            for s in skills_list[:max_skills]
-        ]
-        return "Proven procedural skills: " + ", ".join(parts)
 
-    skills.render_skill_block = render_skill_block
-    mod.skills = skills
-    monkeypatch.setitem(sys.modules, "fusion_trainer", mod)
-    monkeypatch.setitem(sys.modules, "fusion_trainer.skills", skills)
+def _fake_render(skills, max_skills=5, max_chars=2000):
+    lines = [BLOCK_HEADER]
+    for skill in skills[:max_skills]:
+        lines.append(
+            "- %s (used %sx, verified by outcome_signal)"
+            % (skill.get("skill_id", ""), skill.get("success_count", 0))
+        )
+    return "\n".join(lines)[:max_chars]
+
+
+def _fake_load(path):
+    with open(path, "r", encoding="utf-8") as fh:
+        return [line.strip() for line in fh if line.strip()]
+
+
+def _install_fake_skills(monkeypatch, render=None):
+    fake_trainer = types.ModuleType("fusion_trainer")
+    skills_mod = types.ModuleType("fusion_trainer.skills")
+    skills_mod.load_skill_library = _fake_load
+    skills_mod.render_skill_block = render or _fake_render
+    fake_trainer.skills = skills_mod
+    monkeypatch.setitem(sys.modules, "fusion_trainer", fake_trainer)
+    monkeypatch.setitem(sys.modules, "fusion_trainer.skills", skills_mod)
+    return skills_mod
 
 
 def _library():
@@ -106,12 +123,20 @@ def test_retrieve_caps_at_max_skills():
     assert len(picked) == 1
 
 
-def test_render_block_single_sourced_format(monkeypatch):
-    _install_fake_trainer(monkeypatch)
+def test_render_block_uses_injected_contract(monkeypatch):
+    _install_fake_skills(monkeypatch)
     retriever = SkillRetriever(library=_library())
     block = retriever.render_block(retriever.retrieve(task_id="sheet-9"))
-    assert block.startswith("Proven procedural skills")
-    assert "used 3x" in block
+    assert block.startswith(BLOCK_HEADER)
+    assert "sheet_import (used 3x" in block
+
+
+def test_render_block_respects_max_chars(monkeypatch):
+    _install_fake_skills(
+        monkeypatch, render=lambda s, max_skills=5, max_chars=2000: "x" * max_chars
+    )
+    retriever = SkillRetriever(library=_library(), max_chars=10)
+    assert len(retriever.render_block(_library())) == 10
 
 
 def test_inject_empty_when_no_match():
@@ -129,20 +154,18 @@ def test_load_requires_path_or_library():
         SkillRetriever()
 
 
-def test_injection_failure_fails_visible_returns_empty_block():
-    bus = LifecycleBus()
+def test_missing_trainer_module_raises_typed_error(monkeypatch):
+    # sys.modules[name] = None makes any import of it raise ImportError,
+    # deterministically simulating a standalone install without trainer.
+    monkeypatch.setitem(sys.modules, "fusion_trainer.skills", None)
+    retriever = SkillRetriever(library=_library())
+    with pytest.raises(SkillRetrievalError):
+        retriever.render_block(_library())
+    with pytest.raises(SkillRetrievalError):
+        SkillRetriever(library_path="/tmp/any.jsonl")
 
-    class Broken:
-        def __getattr__(self, name):
-            raise RuntimeError("boom")
 
-    retriever = SkillRetriever(library=_library(), bus=bus)
-    retriever._library = [Broken()]
-    assert retriever.inject(task_id="x") == ""
-
-
-def test_inject_emits_event_with_skill_ids(monkeypatch):
-    _install_fake_trainer(monkeypatch)
+def test_injection_failure_returns_empty_and_emits_event():
     seen = []
     bus = LifecycleBus()
     orig = bus.emit
@@ -153,6 +176,23 @@ def test_inject_emits_event_with_skill_ids(monkeypatch):
 
     bus.emit = spy
     retriever = SkillRetriever(library=_library(), bus=bus)
+    retriever._library = [object()]
+    assert retriever.inject(task_id="x") == ""
+    assert [e for e, _ in seen if e == "skill_injection_failed"]
+
+
+def test_inject_emits_event_with_skill_ids(monkeypatch):
+    seen = []
+    bus = LifecycleBus()
+    orig = bus.emit
+
+    def spy(source, event, payload, session_id=""):
+        seen.append((event, payload))
+        return orig(source, event, payload, session_id=session_id)
+
+    bus.emit = spy
+    _install_fake_skills(monkeypatch)
+    retriever = SkillRetriever(library=_library(), bus=bus)
     retriever.inject(task_id="sheet-9")
     injected = [p for e, p in seen if e == "skill_block_injected"]
     assert len(injected) == 1
@@ -162,3 +202,14 @@ def test_inject_emits_event_with_skill_ids(monkeypatch):
 def test_used_skills_entry_for_feedback_loop():
     record = used_skills_entry(["create_document", "", "sheet_import"])
     assert record == {"used_skills": ["create_document", "sheet_import"]}
+
+
+def test_real_trainer_contract_conformance():
+    pytest.importorskip("fusion_trainer")
+    from fusion_trainer.skills import render_skill_block
+
+    retriever = SkillRetriever(library=_library())
+    skills = retriever.retrieve(task_id="sheet-9")
+    real = render_skill_block(skills, max_skills=5, max_chars=2000)
+    assert real.startswith("Proven procedural skills")
+    assert "used 3x" in real
