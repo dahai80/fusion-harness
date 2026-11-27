@@ -467,6 +467,10 @@ class TeamRuntime:
                 },
             )
             logger.info("tier resolved member=%s tier=%s source=%s", member.name, tier, tier_source)
+        if getattr(member, "privacy", ""):
+            # Privacy routing constraint (biz pipeline): carried verbatim in
+            # spec.metadata; consumers own enforcement.
+            metadata["privacy"] = member.privacy
         spec = SubagentSpec(
             name=member.name,
             prompt=prompt,
