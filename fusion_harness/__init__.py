@@ -15,6 +15,11 @@ from fusion_harness.cancellation import (
     CancellationRegistry,
     TurnStateError,
 )
+from fusion_harness.skill_retrieval import (
+    SkillRetrievalError,
+    SkillRetriever,
+    used_skills_entry,
+)
 from fusion_harness.experience import (
     NOTEBOOK_MULTIPLIER,
     GuardVerdict,
@@ -220,6 +225,9 @@ __all__ = [
     "RequestAction",
     "ResolvedRequest",
     "resolve_request",
+    "SkillRetrievalError",
+    "SkillRetriever",
+    "used_skills_entry",
     "NOTEBOOK_MULTIPLIER",
     "GuardVerdict",
     "LoopGuard",
