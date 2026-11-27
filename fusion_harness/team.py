@@ -23,6 +23,12 @@ _VALID_MODES = ("bypass", "approved", "default", "plan")
 # model-agnostic, zero model calls, deterministic). "" = unspecified.
 VALID_MODEL_TIERS = ("", "cheap", "strong")
 
+# Per-member privacy routing constraint. "local-only" forbids dispatching
+# the member's model traffic to anything but the local endpoint; the kernel
+# only carries the constraint (spec.metadata["privacy"]) — consumers own
+# enforcement (kernel stays model-agnostic). "" = unspecified.
+VALID_PRIVACY_MODES = ("", "local-only")
+
 
 class TeamDefError(TypeError):
     """Raised on illegal team definitions (fail visibly)."""
@@ -39,6 +45,7 @@ class TeamMember:
     max_concurrency: int = 1
     context: str = ""
     model_tier: str = ""
+    privacy: str = ""
 
     def __post_init__(self) -> None:
         if not _MEMBER_NAME_RE.match(self.name or ""):
@@ -52,6 +59,10 @@ class TeamMember:
         if self.model_tier not in VALID_MODEL_TIERS:
             raise TeamDefError(
                 "unknown model tier %r (valid: cheap, strong, or empty)" % self.model_tier
+            )
+        if self.privacy not in VALID_PRIVACY_MODES:
+            raise TeamDefError(
+                "unknown privacy mode %r (valid: local-only, or empty)" % self.privacy
             )
 
 
