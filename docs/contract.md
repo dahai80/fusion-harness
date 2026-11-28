@@ -98,15 +98,12 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 - Child narrowing is monotonic: tool surface = parent ∩ spec allowlist; permission mode = stricter of parent and spec (strictness: bypass < approved < default < plan); budget/turn caps are additive. Violations flag status `capped`, never widen authority.
 - Agent execution is an injected async callable — the kernel owns isolation and accounting, not orchestration ladders.
 ## 10. Resumable Checkpoints (0.8.0, plan P2-2)
-
 - `CheckpointStore` (sqlite, WAL, `synchronous=FULL`): `CheckpointState` = messages + budget + permission mode + outbox offset; `save/latest/load/list/prune`.
 - Resume contract: state rebuild reads a checkpoint; committed tool effects are never re-executed — the outbox receipt cache owns effect idempotency (checkpoint restore + redelivery is safe by construction).
 ## 11. Skills + Permission Derivation (0.8.0, plan P2-3)
-
 - `parse_skill`: `---` frontmatter (name/description/permissions) + body; missing name, malformed or unknown permission clauses reject at load (fail-closed).
 - `derive_permissions(skill)`: deterministic, engine-shaped node-layer rules; deny clauses always win (strictest-wins); tool names map exact or trailing-`*` globs to anchored regexes.
 ## 12. Evaluation Baseline (0.8.0, plan P2-4)
-
 - `bench/compaction_eval.py`: deterministic "future questions" compaction scoring (2610.27301) — no LLM in CI; `bench/baseline.json` records scores with tolerance; regression beyond tolerance fails the suite. Mechanisms without a benchmark delta here do not merge (minimalism gate).
 `ConfirmationPolicy(tier, risk_threshold, tool_overrides)` with tiers `always` / `never` / `risk` is evaluated **inside** `PermissionEngine` — one decision point, consumers must not stack local policy layers on top.
 
@@ -263,3 +260,6 @@ Structural domain separation: **durable** events are `session_log.SessionEvent`;
 - **SIM-shaped records** (`evolution_memory`): every accepted self-modification lands as one `EvolutionRecord` — `{change_id, component, rationale, predicted_outcomes[], observed_outcomes[], verdict, eval_context, provenance, ts}` (arXiv 2611.18856 four fields: rationale / predicted / observed / evaluation context). `EvolutionMemory.append` is verdict-gated: records without a decided `keep|rollback` verdict raise `EvolutionMemoryError`; rationale, component, and at least predicted-or-observed outcomes are required. **Privacy rule**: records carry metric deltas and dataset names only — never prompts, completions, or dataset content. Zero model calls.
 - **JSONL persistence**: same discipline as `trajectory` — append-only lines, `sort_keys` serialization, corrupt lines skipped loudly (`logger.error`), reload on construction from `path`. **Component-scoped summaries**: `summarize_for(component)` renders the decisive lessons for one component (verdict visible, rollback records stay as avoid-lessons); returns `""` when nothing recorded — never pads across components.
 - **Deterministic gate** (`evals/evolution_bench.py`): `run_evolution_suite` seeds a fresh memory per case, renders one component's summary, and probes token containment — `must_surface` (decisive rationale + verdict words present) and `must_not_surface` (other components' lessons never leak). `assert_evolution_gate` fails CI naming the offending case. No LLM, no live store.
+## 45. Selection Protocol (issue #186)
+- **Noise-band + permutation A/B gate** (`selection`): `compare(incumbent_scores, candidate_scores)` returns `{verdict, p, noise_band, incumbent_mean, candidate_mean, delta}`. `keep` requires the improvement to clear the incumbent's noise band (RRSI step-1 rule: band = stdev of incumbent baseline, floored) AND survive a two-sided permutation test at `alpha`; `rollback` symmetric; anything else is `inconclusive` — keep the incumbent. Winner's-Curse discipline (arXiv 2610.09239): max-score selection on noisy small evals otherwise keeps luck.
+- **Deterministic + holdout discipline**: exact permutation when the split space is small (<= 20000), seeded sampling otherwise; same inputs + seed = same verdict; pure stdlib, zero deps, no model calls. `HoldoutSplit` is a deterministic shuffled train/holdout split (sorted input, seeded shuffle); holdout is `sealed` until single-use `open()` (repeat opens log a discipline violation). Consumers: SkillLibrary promotion, prompt-evolution gating, and any RSI loop where the proposer must never see the grader.
