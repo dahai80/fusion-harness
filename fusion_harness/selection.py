@@ -11,7 +11,7 @@ import logging
 import math
 import random
 from itertools import combinations
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Sequence
 
 logger = logging.getLogger(__name__)
 
