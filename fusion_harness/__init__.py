@@ -16,6 +16,11 @@ from fusion_harness.evolution_memory import (
     EvolutionMemoryError,
     EvolutionRecord,
 )
+from fusion_harness.selection import (
+    HoldoutSplit,
+    compare,
+    compare_paired,
+)
 from fusion_harness.cancellation import (
     CancelToken,
     CancellationRegistry,
@@ -360,4 +365,7 @@ __all__ = [
     "EvolutionMemory",
     "EvolutionMemoryError",
     "EvolutionRecord",
+    "HoldoutSplit",
+    "compare",
+    "compare_paired",
 ]
