@@ -82,3 +82,46 @@ def test_holdout_split_contains_sealed_flag():
     assert s.opened is False
     s.open()
     assert s.opened is True
+
+
+def test_compare_paired_clear_improvement_keeps():
+    from fusion_harness.selection import compare_paired
+
+    inc = [0.40, 0.50, 0.45, 0.55, 0.42, 0.48]
+    cand = [0.90, 0.95, 0.88, 0.92, 0.91, 0.89]
+    result = compare_paired(inc, cand, seed=7)
+    assert result["verdict"] == "keep"
+
+
+def test_compare_paired_noisy_absolute_gap_but_consistent_deltas_keeps():
+    """The E1 failure mode: cross-fixture variance swamps the two-sample
+    band, but per-fixture deltas are uniformly positive — paired test
+    must keep where compare() said inconclusive."""
+    from fusion_harness.selection import compare, compare_paired
+
+    inc = [0.30, 0.60, 0.45, 0.75, 0.50, 0.55]
+    cand = [0.45, 0.75, 0.60, 0.90, 0.65, 0.70]
+    two_sample = compare(inc, cand, seed=7)
+    paired = compare_paired(inc, cand, seed=7)
+    assert two_sample["verdict"] == "inconclusive"
+    assert paired["verdict"] == "keep"
+
+
+def test_compare_paired_mixed_deltas_inconclusive():
+    from fusion_harness.selection import compare_paired
+
+    inc = [0.50, 0.60, 0.70, 0.80]
+    cand = [0.55, 0.58, 0.65, 0.95]
+    result = compare_paired(inc, cand, seed=7)
+    assert result["verdict"] == "inconclusive"
+
+
+def test_compare_paired_length_mismatch_raises():
+    from fusion_harness.selection import compare_paired
+
+    try:
+        compare_paired([0.5, 0.6], [0.5], seed=7)
+    except ValueError as exc:
+        assert "same length" in str(exc)
+    else:
+        raise AssertionError("mismatched pairs must raise")
