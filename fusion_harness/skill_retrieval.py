@@ -29,12 +29,37 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "SkillRetrievalError",
     "SkillRetriever",
+    "injection_audit_entry",
     "used_skills_entry",
 ]
 
 
 class SkillRetrievalError(RuntimeError):
     """Skill library unreadable or fusion-trainer contract unavailable."""
+
+
+def injection_audit_entry(
+    task_id: str,
+    skill_ids: List[str],
+    max_skills: int,
+    max_chars: int,
+    injection_point: str = "system-prefix",
+    block_chars: int = 0,
+    source: str = "fusion_trainer.skills.render_skill_block",
+) -> Dict[str, Any]:
+    """C4 injection-format audit record (issue #182, arXiv 2608.17684):
+    enumerate exactly what the harness injected — built-in skills, block
+    format source, injection point, budgets — so downstream A/B reports
+    can attribute skill effect without harness confounds."""
+    return {
+        "task_id": task_id,
+        "skill_ids": list(skill_ids),
+        "format_source": source,
+        "injection_point": injection_point,
+        "max_skills": max_skills,
+        "max_chars": max_chars,
+        "block_chars": block_chars,
+    }
 
 
 def used_skills_entry(skill_ids: Sequence[str]) -> Dict[str, List[str]]:
@@ -66,6 +91,7 @@ class SkillRetriever:
         else:
             raise SkillRetrievalError("library_path or library is required")
         self._render = None
+        self.last_injection_audit: Optional[Dict[str, Any]] = None
 
     @staticmethod
     def _load(path: str) -> List[Dict[str, Any]]:
@@ -147,10 +173,19 @@ class SkillRetriever:
             self._emit("skill_injection_failed", {"task_id": task_id, "reason": str(exc)})
             return ""
         if block:
-            self._emit(
-                "skill_block_injected",
-                {"task_id": task_id, "skill_ids": [s.get("skill_id", "") for s in skills]},
+            skill_ids = [s.get("skill_id", "") for s in skills]
+            # C4 audit trail: what the harness injected, per run (additive —
+            # block rendering and the injected bytes are unchanged).
+            audit = injection_audit_entry(
+                task_id=task_id,
+                skill_ids=skill_ids,
+                max_skills=self._max_skills,
+                max_chars=self._max_chars,
+                block_chars=len(block),
             )
+            self.last_injection_audit = audit
+            self._emit("skill_injection_audit", audit)
+            self._emit("skill_block_injected", {"task_id": task_id, "skill_ids": skill_ids})
         return block
 
     def _emit(self, event: str, payload: Dict[str, Any]) -> None:

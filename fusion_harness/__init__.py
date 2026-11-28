@@ -29,7 +29,16 @@ from fusion_harness.cancellation import (
 from fusion_harness.skill_retrieval import (
     SkillRetrievalError,
     SkillRetriever,
+    injection_audit_entry,
     used_skills_entry,
+)
+from fusion_harness.skill_coverage import (
+    COVERAGE_LABELS,
+    CoverageLedger,
+    SkillCoverageError,
+    analyze_run,
+    analyze_tap_jsonl,
+    label_instruction,
 )
 from fusion_harness.experience import (
     NOTEBOOK_MULTIPLIER,
@@ -238,6 +247,13 @@ __all__ = [
     "resolve_request",
     "SkillRetrievalError",
     "SkillRetriever",
+    "COVERAGE_LABELS",
+    "CoverageLedger",
+    "SkillCoverageError",
+    "analyze_run",
+    "analyze_tap_jsonl",
+    "injection_audit_entry",
+    "label_instruction",
     "used_skills_entry",
     "NOTEBOOK_MULTIPLIER",
     "GuardVerdict",
