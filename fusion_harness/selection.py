@@ -134,4 +134,73 @@ class HoldoutSplit:
         logger.info("holdout opened cases=%d", len(self.holdout))
 
 
-__all__ = ["HoldoutSplit", "VERDICTS", "compare"]
+__all__ = ["HoldoutSplit", "VERDICTS", "compare", "compare_paired"]
+
+
+def compare_paired(
+    incumbent_scores: Sequence[float],
+    candidate_scores: Sequence[float],
+    alpha: float = 0.05,
+    band_floor: float = 0.0,
+    seed: int = 0,
+) -> Dict[str, Any]:
+    """Paired gate for same-fixture A/B trials: per-pair deltas, two-sided
+    sign-flip permutation on the mean delta. Use when both arms score the
+    SAME fixture set — pairing removes cross-fixture variance that would
+    otherwise swamp the two-sample noise band (observed in the E1 loop:
+    pooled two-sample tests read uniformly positive deltas inconclusive,
+    biasing RSI loops toward stasis). Exact for <= 20 pairs."""
+    inc = list(incumbent_scores)
+    cand = list(candidate_scores)
+    if len(inc) != len(cand):
+        raise ValueError("paired comparison needs same length score lists")
+    if not inc:
+        mean_delta = 0.0
+        p = 1.0
+    else:
+        deltas = [c - i for i, c in zip(inc, cand)]
+        mean_delta = _mean(deltas)
+        observed = abs(mean_delta)
+        n = len(deltas)
+        rng = random.Random(seed)
+        if observed == 0.0:
+            p = 1.0
+        elif n <= 20:
+            count = 0
+            trials = 0
+            for mask in range(1 << n):
+                total = sum(d if (mask >> k) & 1 == 0 else -d for k, d in enumerate(deltas))
+                trials += 1
+                if abs(total / n) >= observed - 1e-12:
+                    count += 1
+            p = count / trials
+        else:
+            count = 0
+            trials = 10000
+            for _ in range(trials):
+                total = sum(d if rng.random() < 0.5 else -d for d in deltas)
+                if abs(total / n) >= observed - 1e-12:
+                    count += 1
+            p = (count + 1) / (trials + 1)
+    if mean_delta > band_floor and p < alpha:
+        verdict = "keep"
+    elif mean_delta < -band_floor and p < alpha:
+        verdict = "rollback"
+    else:
+        verdict = "inconclusive"
+    result = {
+        "verdict": verdict,
+        "p": p,
+        "noise_band": band_floor,
+        "incumbent_mean": _mean(inc),
+        "candidate_mean": _mean(cand),
+        "delta": mean_delta,
+    }
+    logger.info(
+        "selection-paired verdict=%s delta=%.4f p=%.4f n_pairs=%d",
+        verdict,
+        mean_delta,
+        p,
+        len(inc),
+    )
+    return result
