@@ -10,6 +10,12 @@ from fusion_harness.artifact_scan import (
     scan_artifact,
     stamp_untrusted,
 )
+from fusion_harness.evolution_memory import (
+    VERDICTS,
+    EvolutionMemory,
+    EvolutionMemoryError,
+    EvolutionRecord,
+)
 from fusion_harness.cancellation import (
     CancelToken,
     CancellationRegistry,
@@ -350,4 +356,8 @@ __all__ = [
     "stamp_untrusted",
     "cite_link",
     "extract_links",
+    "VERDICTS",
+    "EvolutionMemory",
+    "EvolutionMemoryError",
+    "EvolutionRecord",
 ]
